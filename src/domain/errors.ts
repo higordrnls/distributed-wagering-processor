@@ -16,3 +16,21 @@ export class CurrencyMismatchError extends DomainError {
     super("CURRENCY_MISMATCH", `Moedas diferentes: ${a} e ${b}`);
   }
 }
+
+export class InsufficientFundsError extends DomainError {
+  constructor(balance: string, requested: string) {
+    super("INSUFFICIENT_FUNDS", `Saldo ${balance} insuficiente para ${requested}`);
+  }
+}
+
+export class InvalidLedgerEntryError extends DomainError {
+  constructor(message: string) {
+    super("INVALID_LEDGER_ENTRY", message);
+  }
+}
+
+export class InvalidWalletError extends DomainError {
+  constructor(message: string) {
+    super("INVALID_WALLET", message);
+  }
+}
