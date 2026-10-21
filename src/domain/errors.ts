@@ -34,3 +34,16 @@ export class InvalidWalletError extends DomainError {
     super("INVALID_WALLET", message);
   }
 }
+
+export class InvalidTransactionError extends DomainError {
+  constructor(message: string) {
+    super("INVALID_TRANSACTION", message);
+  }
+}
+
+/** Erro de programação: tentativa de transição a partir de um estado terminal. */
+export class InvalidTransactionStateError extends DomainError {
+  constructor(message: string) {
+    super("INVALID_TRANSACTION_STATE", message);
+  }
+}
