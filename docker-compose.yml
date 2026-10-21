@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: wager
+      POSTGRES_PASSWORD: wager
+      POSTGRES_DB: wager
+    ports:
+      - "5433:5432"
+
+  ministack:
+    image: ministackorg/ministack
+    ports:
+      - "4566:4566"
