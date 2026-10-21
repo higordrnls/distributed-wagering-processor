@@ -1,4 +1,9 @@
-import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { randomUUID, createHash } from "node:crypto";
 import type { Pool } from "pg";
 import { Wallet } from "../domain/wallet";
@@ -143,4 +148,30 @@ export class WalletService {
       client.release();
     }
   }
+
+  async findById(walletId: string) {
+    const result = await this.pool.query(
+      `SELECT id, player_id, currency, balance, version, created_at, updated_at
+       FROM wallets
+       WHERE id = $1`,
+      [walletId],
+    );
+
+    const wallet = result.rows[0];
+
+    if (!wallet) {
+      throw new NotFoundException("Carteira não encontrada");
+    }
+
+    return {
+      walletId: wallet.id,
+      playerId: wallet.player_id,
+      currency: wallet.currency,
+      balance: String(wallet.balance),
+      version: wallet.version,
+      createdAt: wallet.created_at,
+      updatedAt: wallet.updated_at,
+    };
+  }
+
 }

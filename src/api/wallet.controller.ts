@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
 } from "@nestjs/common";
 import { WalletService } from "./wallet.service";
@@ -10,6 +12,11 @@ import { WalletService } from "./wallet.service";
 @Controller("wallets")
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
+
+  @Get(":walletId")
+  findById(@Param("walletId") walletId: string) {
+    return this.walletService.findById(walletId);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
