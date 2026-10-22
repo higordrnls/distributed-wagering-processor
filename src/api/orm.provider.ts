@@ -4,19 +4,23 @@ import { ormOptions } from "../infra/orm-config";
 
 @Injectable()
 export class OrmProvider implements OnModuleDestroy {
-  private orm?: MikroORM;
+  private ormPromise?: Promise<MikroORM>;
 
-  async getOrm(): Promise<MikroORM> {
-    if (!this.orm) {
-      this.orm = await MikroORM.init(ormOptions());
+  getOrm(): Promise<MikroORM> {
+    if (!this.ormPromise) {
+      this.ormPromise = MikroORM.init(ormOptions()).catch((error) => {
+        this.ormPromise = undefined;
+        throw error;
+      });
     }
 
-    return this.orm;
+    return this.ormPromise;
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.orm) {
-      await this.orm.close(true);
+    if (this.ormPromise) {
+      const orm = await this.ormPromise;
+      await orm.close(true);
     }
   }
 }
