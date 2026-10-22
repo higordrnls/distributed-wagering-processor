@@ -236,7 +236,16 @@ export class WalletService {
            ),
            0
          ) AS calculated_balance,
-         COUNT(l.id)::integer AS ledger_entries
+         (w.balance - COALESCE(
+           SUM(
+             CASE
+               WHEN l.direction = 'CREDIT' THEN l.amount
+               WHEN l.direction = 'DEBIT' THEN -l.amount
+             END
+           ),
+           0
+         ))::numeric(18,2) AS difference,
+         COUNT(l.id)::integer AS checked_entries
        FROM wallets w
        LEFT JOIN wallet_ledger_entries l ON l.wallet_id = w.id
        WHERE w.id = $1
@@ -250,16 +259,28 @@ export class WalletService {
       throw new NotFoundException("Carteira não encontrada");
     }
 
+    const currency = String(row.currency);
     const storedBalance = String(row.stored_balance);
     const calculatedBalance = String(row.calculated_balance);
+    const difference = String(row.difference);
+    const consistent = Number(difference) === 0;
+
+    if (!consistent) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        event: "wallet_reconciliation_mismatch",
+        walletId: row.id,
+        checkedEntries: row.checked_entries,
+      }));
+    }
 
     return {
       walletId: row.id,
-      currency: row.currency,
-      storedBalance,
-      calculatedBalance,
-      ledgerEntries: row.ledger_entries,
-      consistent: storedBalance === calculatedBalance,
+      storedBalance: { amount: storedBalance, currency },
+      calculatedBalance: { amount: calculatedBalance, currency },
+      difference: { amount: difference, currency },
+      consistent,
+      checkedEntries: row.checked_entries,
     };
   }
 

@@ -15,6 +15,7 @@ export class WalletController {
   constructor(private readonly walletService: WalletService) {}
 
   @Post(":walletId/reconciliation")
+  @HttpCode(HttpStatus.OK)
   reconcile(@Param("walletId") walletId: string) {
     return this.walletService.reconcile(walletId);
   }

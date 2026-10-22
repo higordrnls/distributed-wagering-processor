@@ -88,9 +88,10 @@ describe("API — consultas e reconciliação", () => {
 
     const result = await wallets.reconcile(wallet.walletId);
 
-    expect(result.storedBalance).toBe("75.00");
-    expect(result.calculatedBalance).toBe("75.00");
-    expect(result.ledgerEntries).toBe(1);
+    expect(result.storedBalance).toEqual({ amount: "75.00", currency: "BRL" });
+    expect(result.calculatedBalance).toEqual({ amount: "75.00", currency: "BRL" });
+    expect(result.checkedEntries).toBe(1);
+    expect(result.difference).toEqual({ amount: "0.00", currency: "BRL" });
     expect(result.consistent).toBe(true);
   });
 
@@ -108,8 +109,9 @@ describe("API — consultas e reconciliação", () => {
 
     const result = await wallets.reconcile(wallet.walletId);
 
-    expect(result.storedBalance).toBe("95.00");
-    expect(result.calculatedBalance).toBe("100.00");
+    expect(result.storedBalance).toEqual({ amount: "95.00", currency: "BRL" });
+    expect(result.calculatedBalance).toEqual({ amount: "100.00", currency: "BRL" });
+    expect(result.difference).toEqual({ amount: "-5.00", currency: "BRL" });
     expect(result.consistent).toBe(false);
 
     const persisted = await wallets.findById(wallet.walletId);
