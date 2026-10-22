@@ -6,11 +6,10 @@ import {
   Optional,
   NotFoundException,
 } from "@nestjs/common";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { Wallet } from "../domain/wallet";
 import { Money } from "../domain/money";
-import { WagerTransactionKind } from "../domain/wager-transaction";
 import { DATABASE_POOL } from "./database.provider";
 import { MetricsService } from "./metrics.service";
 import { OrmProvider } from "./orm.provider";
@@ -20,8 +19,8 @@ import { createWalletTransaction } from "../infra/create-wallet-transaction";
 export class WalletService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
-    @Optional() private readonly metrics?: MetricsService,
-    @Optional() private readonly ormProvider?: OrmProvider,
+    @Optional() private readonly metrics: MetricsService | undefined,
+    private readonly ormProvider: OrmProvider,
   ) {}
 
   async create(input: {
@@ -56,112 +55,15 @@ export class WalletService {
       openingTransactionId,
     });
 
-    if (this.ormProvider) {
-      try {
-        const orm = await this.ormProvider.getOrm();
-
-        await createWalletTransaction(
-          orm,
-          wallet,
-          openingEntry,
-          openingTransactionId,
-        );
-
-        return {
-          walletId: wallet.id,
-          playerId: wallet.playerId,
-          currency: wallet.currency,
-          balance: wallet.balance.toString(),
-          version: wallet.version,
-        };
-      } catch (error) {
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          error.code === "23505"
-        ) {
-          throw new ConflictException(
-            "Já existe uma carteira para este jogador e moeda",
-          );
-        }
-
-        throw error;
-      }
-    }
-
-    const client = await this.pool.connect();
-
     try {
-      await client.query("BEGIN");
+      const orm = await this.ormProvider.getOrm();
 
-      await client.query(
-        `INSERT INTO wallets (
-          id, player_id, currency, balance, version, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          wallet.id,
-          wallet.playerId,
-          wallet.currency,
-          wallet.balance.toString(),
-          wallet.version,
-          wallet.createdAt,
-          wallet.updatedAt,
-        ],
+      await createWalletTransaction(
+        orm,
+        wallet,
+        openingEntry,
+        openingTransactionId,
       );
-
-      if (openingEntry) {
-        const payloadHash = createHash("sha256")
-          .update(JSON.stringify({
-            walletId,
-            playerId: wallet.playerId,
-            balance: initialBalance.toJSON(),
-          }))
-          .digest("hex");
-
-        await client.query(
-          `INSERT INTO wager_transactions (
-            id, provider_id, external_transaction_id, idempotency_key,
-            payload_hash, wallet_id, player_id, round_id, game_id,
-            kind, amount, currency, status, created_at, processed_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PROCESSED', $13, $13)`,
-          [
-            openingTransactionId,
-            "internal",
-            `opening:${walletId}`,
-            `opening:${walletId}`,
-            payloadHash,
-            wallet.id,
-            wallet.playerId,
-            "opening",
-            "internal",
-            WagerTransactionKind.Opening,
-            initialBalance.toString(),
-            initialBalance.currency,
-            now,
-          ],
-        );
-
-        await client.query(
-          `INSERT INTO wallet_ledger_entries (
-            id, wallet_id, transaction_id, direction, amount,
-            currency, balance_before, balance_after, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [
-            openingEntry.id,
-            openingEntry.walletId,
-            openingEntry.transactionId,
-            openingEntry.direction,
-            openingEntry.money.toString(),
-            openingEntry.money.currency,
-            openingEntry.balanceBefore.toString(),
-            openingEntry.balanceAfter.toString(),
-            openingEntry.createdAt,
-          ],
-        );
-      }
-
-      await client.query("COMMIT");
 
       return {
         walletId: wallet.id,
@@ -171,13 +73,15 @@ export class WalletService {
         version: wallet.version,
       };
     } catch (error) {
-      await client.query("ROLLBACK");
+      // O MikroORM encapsula erros de restrição do PostgreSQL.
+      const cause = error instanceof Error ? error.cause : undefined;
+      const dbError = cause ?? error;
 
       if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "23505"
+        typeof dbError === "object" &&
+        dbError !== null &&
+        "code" in dbError &&
+        dbError.code === "23505"
       ) {
         throw new ConflictException(
           "Já existe uma carteira para este jogador e moeda",
@@ -185,8 +89,6 @@ export class WalletService {
       }
 
       throw error;
-    } finally {
-      client.release();
     }
   }
 

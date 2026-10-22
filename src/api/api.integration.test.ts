@@ -6,14 +6,21 @@ import { createTestOrm } from "../infra/test-db";
 import { WalletService } from "./wallet.service";
 import { WagerTransactionService } from "./wager-transaction.service";
 import { MetricsService } from "./metrics.service";
+import { OrmProvider } from "./orm.provider";
+import type { MikroORM } from "@mikro-orm/postgresql";
 
 let pool: Pool;
+let ormProvider: OrmProvider;
+let orm: MikroORM;
 let wallets: WalletService;
 let transactions: WagerTransactionService;
 
 beforeAll(async () => {
-  const orm = await createTestOrm();
-  await orm.close(true);
+  orm = await createTestOrm();
+
+  ormProvider = {
+    getOrm: async () => orm,
+  } as unknown as OrmProvider;
 
   pool = new Pool({
     host: process.env.DB_HOST ?? "localhost",
@@ -23,12 +30,13 @@ beforeAll(async () => {
     database: "wager_test",
   });
 
-  wallets = new WalletService(pool);
+  wallets = new WalletService(pool, undefined, ormProvider);
   transactions = new WagerTransactionService(pool);
 });
 
 afterAll(async () => {
   await pool?.end();
+  await orm?.close(true);
 });
 
 describe("API — consultas e reconciliação", () => {
@@ -144,7 +152,7 @@ describe("API — consultas e reconciliação", () => {
 
   test("reconciliação detecta divergência, incrementa métrica e não altera o saldo", async () => {
     const metrics = new MetricsService();
-    const instrumentedWallets = new WalletService(pool, metrics);
+    const instrumentedWallets = new WalletService(pool, metrics, ormProvider);
 
     const wallet = await instrumentedWallets.create({
       playerId: randomUUID(),
