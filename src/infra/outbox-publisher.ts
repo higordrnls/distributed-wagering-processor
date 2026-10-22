@@ -11,6 +11,8 @@ import {
 } from "@aws-sdk/client-sqs";
 import { Pool } from "pg";
 import { DATABASE_POOL } from "../api/database.provider";
+import { Optional } from "@nestjs/common";
+import { MetricsService } from "../api/metrics.service";
 
 type OutboxRow = {
   id: string;
@@ -34,7 +36,10 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   private stopping = false;
   private activeCycle?: Promise<void>;
 
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {
     this.sqs = new SQSClient({
       region: process.env.AWS_REGION ?? "us-east-1",
       endpoint: process.env.SQS_ENDPOINT ?? "http://localhost:4566",
@@ -162,6 +167,26 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Falha no ciclo da outbox: ${String(error)}`);
     } finally {
       this.running = false;
+      await this.updateOutboxLag();
+    }
+  }
+
+  private async updateOutboxLag(): Promise<void> {
+    try {
+      const result = await this.pool.query<{ lag_seconds: number | string }>(`
+        SELECT COALESCE(
+          EXTRACT(EPOCH FROM (NOW() - MIN(occurred_at))),
+          0
+        ) AS lag_seconds
+        FROM outbox_messages
+        WHERE published_at IS NULL
+      `);
+
+      this.metrics?.outboxLag.set(Number(result.rows[0]?.lag_seconds ?? 0));
+    } catch (error) {
+      this.logger.error(
+        `Falha ao atualizar outbox lag: ${String(error)}`,
+      );
     }
   }
 }

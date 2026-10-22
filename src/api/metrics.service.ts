@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import {
   collectDefaultMetrics,
   Counter,
+  Gauge,
   Histogram,
   Registry,
 } from "prom-client";
@@ -45,6 +46,12 @@ export class MetricsService {
   readonly reconciliationMismatches = new Counter({
     name: "wager_reconciliation_mismatches_total",
     help: "Detected wallet reconciliation mismatches",
+    registers: [this.registry],
+  });
+
+  readonly outboxLag = new Gauge({
+    name: "wager_outbox_lag_seconds",
+    help: "Age in seconds of the oldest unpublished outbox event",
     registers: [this.registry],
   });
 
