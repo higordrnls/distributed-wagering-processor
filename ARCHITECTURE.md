@@ -1,0 +1,156 @@
+# Arquitetura e decisões técnicas
+
+## 1. Visão geral
+
+Um único processo NestJS (Bun) expõe a API HTTP e roda três workers em background:
+consumidor SQS, publisher do outbox e reconciliador de `PENDING_REFERENCE`.
+Todas as instâncias rodam tudo. A correção com N instâncias vem do PostgreSQL
+(locks e constraints), não de coordenação entre processos.
+
+    HTTP POST  ──┐
+                 ├─> ProcessWagerTransaction (UMA transação SQL) ─> PostgreSQL
+    SQS FIFO   ──┘     wallets · wager_transactions · wallet_ledger_entries · inbox · outbox
+    Publisher do outbox ─> fila de eventos (wager-events.fifo)
+    Reconciliador ─> reavalia transações PENDING_REFERENCE com a mesma regra de domínio
+
+Camadas: `domain/` (TypeScript puro, sem decorators, sem ORM), `application/` (use case e
+seleção de eventos), `api/` (controllers e services Nest) e `infra/` (migrations, workers, SQS).
+A regra de negócio vive em `domain/process-wager.ts`, uma função pura que recebe a wallet e a
+referência já carregadas. Quem carrega, trava e persiste é o use case.
+
+## 2. Decisões
+
+### 2.1 Dinheiro
+`Money` guarda **centavos em `bigint`**. É exato, não usa `number` nem biblioteca extra, e a escala
+fixa de 2 casas do enunciado torna isso suficiente. Entrada aceita `"25"`, `"25.5"` e `"25.00"`
+(normaliza para 2 casas), rejeita 3+ casas, negativos, notação científica e vazio, com no máximo
+15 dígitos inteiros. No banco: `numeric(18,2)`. Na reidratação:
+`Money.from({ amount: String(row.amount), currency })`. Trade-off: não serve para moedas com outra
+escala (ex.: 3 casas), o que está fora do escopo.
+
+### 2.2 Concorrência: lock pessimista por wallet
+A **primeira instrução** da transação é `SELECT ... FROM wallets WHERE id = $1 FOR UPDATE`.
+Operações da mesma wallet se serializam; wallets diferentes não se bloqueiam (sem lock global).
+A ordem de aquisição é fixa (wallet, depois inbox, depois transação), o que evita deadlock.
+Escolhi lock pessimista porque, numa "hot wallet", o otimista geraria uma enxurrada de retries.
+A coluna `version` incrementa só quando o saldo muda, mas **o controle de concorrência é o lock**,
+não a `version`. Trade-off: o throughput de uma única wallet é serial.
+
+### 2.3 Idempotência persistente
+`INSERT ... ON CONFLICT DO NOTHING` em `wager_transactions`, com `UNIQUE(provider_id,
+external_transaction_id)` e `UNIQUE(provider_id, idempotency_key)`. Se o insert não ocorre, a
+transação existente é lida: mesmo `payload_hash` é replay (devolve o resultado e o **saldo observado
+na época**, guardado em `observed_balance`); hash diferente é conflito (HTTP 409). O hash é SHA-256 do
+JSON canônico (chaves ordenadas recursivamente, `undefined` omitido, valor normalizado a 2 casas) dos
+campos de negócio. O header `Idempotency-Key` e metadados de transporte ficam fora. No caminho SQS,
+a inbox (`PRIMARY KEY (consumer_name, message_id)`) é gravada na mesma transação.
+
+### 2.4 ORM e transações (desvio declarado)
+O MikroORM v6 é usado para **migrations versionadas e reversíveis** (`Migrator`, com `up` e `down`
+testados) e no preparo dos testes. As queries de negócio usam **`pg` com SQL explícito** dentro de
+uma transação `BEGIN/COMMIT`. Motivo: `FOR UPDATE`, `ON CONFLICT` e `SKIP LOCKED` ficam visíveis e
+auditáveis, e o domínio permanece puro, com `rehydrate` manual. Limitação: não usamos Unit of Work,
+Identity Map, `LockMode` nem `EntityManager.transactional()` no caminho quente. É um desvio da
+preferência do enunciado por MikroORM no caminho transacional.
+
+### 2.5 Estados e transições
+    PENDING           -> PROCESSED | REJECTED | FAILED | PENDING_REFERENCE
+    PENDING_REFERENCE -> PROCESSED | REJECTED | FAILED | PENDING_REFERENCE (nova tentativa)
+    PROCESSED, REJECTED, FAILED: terminais (tentar transicionar é erro de programação)
+Um trigger no banco também proíbe `UPDATE` e `DELETE` de transações já terminais.
+
+### 2.6 Referências e reversões
+`REFUND` referencia só `BET`; `ROLLBACK` referencia `BET`, `WIN` ou `REFUND`; `WIN` pode referenciar
+uma `BET`. A referência é resolvida por `(provider_id, referenceExternalTransactionId)` e deve ter
+mesmo provider, player, wallet, moeda e rodada, com valor igual. **Interpretação adotada:** uma
+referência só pode ser revertida **uma vez, qualquer que seja o tipo** (o enunciado fala em "mesmo
+tipo" na regra 4 mas em "uma única vez" na tabela; `REFUND` + `ROLLBACK` na mesma `BET` creditaria
+em dobro). Imposto por índice único parcial em `reference_transaction_id`
+(`status = 'PROCESSED'` e `kind` em `REFUND`/`ROLLBACK`).
+
+### 2.7 Ledger
+Imutável: trigger bloqueia `UPDATE` e `DELETE`. `CHECK` confere a aritmética
+(`before ± amount = after`), valor positivo e saldos não negativos. `UNIQUE (wallet_id,
+transaction_id)` dá no máximo um lançamento por transação e wallet. A coluna `seq` (identity) é a
+base do cursor estável da paginação. `LOSS` e transações `REJECTED` não geram lançamento.
+
+### 2.8 Taxonomia de `failureCode`
+| Código | Quando | Provedor deve |
+|---|---|---|
+| `INSUFFICIENT_FUNDS` | `BET` sem saldo | desistir (ou nova transação após depósito) |
+| `REVERSAL_INSUFFICIENT_FUNDS` | reversão deixaria saldo negativo | desistir; caso operacional |
+| `REFERENCE_NOT_FOUND` | referência não chegou após as tentativas | verificar se a original foi enviada |
+| `REFERENCE_NOT_PROCESSED` | referência foi `REJECTED`/`FAILED` | desistir |
+| `INVALID_REFERENCE_KIND` | tipo de referência não aceito | corrigir o payload |
+| `REFERENCE_MISMATCH` | outro provider, player, wallet, moeda ou rodada | corrigir o payload |
+| `AMOUNT_MISMATCH` | valor diferente da referência | corrigir o payload |
+| `ALREADY_REVERSED` | referência já revertida | desistir |
+| `CURRENCY_MISMATCH` | moeda diferente da wallet | corrigir o payload |
+| `WALLET_PLAYER_MISMATCH` | wallet não pertence ao player | corrigir o payload |
+| `WALLET_NOT_FOUND` | wallet inexistente | corrigir o payload |
+| `INTERNAL_ERROR` | falha permanente de infraestrutura (`FAILED`) | contatar o suporte |
+
+### 2.9 Mapeamento HTTP
+| Situação | Status |
+|---|---|
+| processada ou replay | 200 |
+| wallet criada | 201 |
+| `PENDING_REFERENCE` (aceita, aguarda referência) | 202 |
+| payload inválido | 400 (corpo com `code`) |
+| conflito de idempotência / wallet duplicada | 409 |
+| `REJECTED` por regra de negócio | 422 (com `failureCode`) |
+| `FAILED`, ou readiness com dependência fora | 503 |
+
+## 3. Mensageria (SQS)
+Filas FIFO `wager-transactions.fifo` e `wager-transactions-dlq.fifo`, criadas por
+`scripts/setup-sqs.sh`, com `RedrivePolicy` de `maxReceiveCount = 5`. O FIFO é otimização; a
+garantia final de consistência é do banco. O consumidor usa long polling, uma mensagem por vez,
+visibilidade de 30 s, e **chama o mesmo use case da HTTP**. O `DeleteMessage` (ack) só acontece
+**depois do commit**. Classificação de erros:
+- conflito de idempotência: **ACK** (terminal, conflito de negócio);
+- envelope inválido ou `messageId` reutilizado com outro conteúdo: **não dá ack**, e a mensagem vai
+  para a DLQ pela redrive policy ao atingir 5 recebimentos;
+- demais erros (transitórios): `ChangeMessageVisibility` com backoff `5 * 2^(n-1)` s, teto de 120 s.
+Uma transação `REJECTED` é resultado normal de negócio e leva ack.
+Shutdown: `enableShutdownHooks`; consumidor e reconciliador aguardam o ciclo em andamento antes de encerrar.
+
+## 4. Outbox transacional
+Os eventos são gravados na **mesma transação** do saldo, do ledger e da inbox. Eventos:
+`WagerTransactionProcessed` (inclui `LOSS`), `WagerTransactionRejected`, `WalletBalanceChanged`
+(somente se o saldo muda) e `WagerTransactionPendingReference`. O publisher usa
+`FOR UPDATE SKIP LOCKED`, reserva o lote incrementando `attempts` e empurrando `next_attempt_at`
+30 s à frente (se o processo morrer, outra instância reassume após a reserva expirar), publica e marca
+`published_at`. Em falha, backoff `min(300, 2^tentativas)` s. A entrega é **at-least-once**, então o
+consumidor dos eventos deve deduplicar por `eventId`.
+
+## 5. Worker de `PENDING_REFERENCE`
+Roda a cada `REFERENCE_POLL_INTERVAL_MS` (padrão 5 s) com `FOR UPDATE SKIP LOCKED`. Limite de
+**10 tentativas**, com backoff `min(300, 2^tentativa)` s, o que dá cerca de 13 minutos. Esgotado:
+`REJECTED` com `REFERENCE_NOT_FOUND` e evento `WagerTransactionRejected`. O limite é um valor
+escolhido: cobre atrasos normais de entrega sem manter transações pendentes indefinidamente.
+
+## 6. Observabilidade
+Métricas Prometheus em `GET /metrics`: `wager_transactions_total{status}`,
+`wager_idempotent_replays_total`, `wager_processing_duration_seconds`, `wager_sqs_retries_total`,
+`wager_sqs_dlq_candidates_total`, `wager_reconciliation_mismatches_total`,
+`wager_outbox_lag_seconds` (idade do evento pendente mais antigo, inclusive em backoff).
+Health: `/health/live` e `/health/ready` (PostgreSQL e SQS). A reconciliação compara o saldo
+persistido com o calculado pelo ledger; divergências são logadas, contadas e sinalizadas, **nunca
+corrigidas em silêncio**.
+
+## 7. Autenticação
+Fora do escopo de pontuação (seção 2 do enunciado). Não há autenticação implementada. O desenho
+que eu adotaria: um IdP externo (Keycloak ou Zitadel) emitindo JWT, validado por um `AuthGuard`
+global no Nest, com os endpoints de health abertos e a fila tratada como canal interno confiável.
+
+## 8. Limitações e pendências conhecidas
+- Desvio de ORM descrito em 2.4.
+- O envelope `IntegrationEvent` (classe abstrata com subclasses, seção 11 do enunciado) ainda não
+  existe: o outbox grava só o `data` e o publisher monta o envelope ao publicar.
+- Ainda não há métrica de conflitos de lock, nem métrica da DLQ real (só candidatas à DLQ).
+- Os logs são do `Logger` do Nest (texto), sem JSON estruturado nem `correlationId`.
+- O `AuthGuard` no-op (ponto de extensão explícito) ainda não foi adicionado ao código.
+- Falhas transitórias de banco não têm mapeamento explícito para 503 na API.
+- Wallet inexistente numa submissão: tratamento a confirmar e testar.
+- Testes automatizados de ≥3 instâncias, wallets distintas em paralelo, reinício, DLQ e do
+  worker de `PENDING_REFERENCE` ainda não existem.
