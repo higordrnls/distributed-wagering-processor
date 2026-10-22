@@ -2,7 +2,11 @@ import { MikroORM } from "@mikro-orm/postgresql";
 import { Client } from "pg";
 import { ormOptions } from "./orm-config";
 
-const TEST_DB = "wager_test";
+const TEST_DB = process.env.TEST_DB_NAME ?? "wager_test";
+
+if (!/^[a-z][a-z0-9_]*$/.test(TEST_DB)) {
+  throw new Error("Nome de banco de testes inválido");
+}
 
 async function ensureTestDatabase(): Promise<void> {
   const admin = new Client({

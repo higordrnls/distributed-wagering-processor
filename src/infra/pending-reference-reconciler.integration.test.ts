@@ -18,7 +18,7 @@ beforeAll(async () => {
     port: Number(process.env.DB_PORT ?? 5433),
     user: process.env.DB_USER ?? "wager",
     password: process.env.DB_PASSWORD ?? "wager",
-    database: "wager_test",
+    database: process.env.TEST_DB_NAME ?? "wager_test",
   });
 
   service = new WagerTransactionService(pool);

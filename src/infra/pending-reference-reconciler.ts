@@ -64,17 +64,52 @@ export class PendingReferenceReconciler
     try {
       await client.query("BEGIN");
 
-      const pending = await client.query(`
-        SELECT *
+      // Seleciona trabalho sem bloquear transações antes das carteiras.
+      const candidates = await client.query(`
+        SELECT id, wallet_id
         FROM wager_transactions
         WHERE status = 'PENDING_REFERENCE'
           AND next_reference_attempt_at <= NOW()
         ORDER BY next_reference_attempt_at, id
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED
+        LIMIT 100
       `);
 
-      const row = pending.rows[0];
+      let row: Record<string, any> | undefined;
+
+      for (const candidate of candidates.rows) {
+        await client.query("SAVEPOINT candidate_lock");
+
+        const walletLock = await client.query(
+          "SELECT id FROM wallets WHERE id = $1 FOR UPDATE SKIP LOCKED",
+          [candidate.wallet_id],
+        );
+
+        if (walletLock.rowCount === 0) {
+          await client.query("ROLLBACK TO SAVEPOINT candidate_lock");
+          continue;
+        }
+
+        const pending = await client.query(
+          `SELECT *
+           FROM wager_transactions
+           WHERE id = $1
+             AND wallet_id = $2
+             AND status = 'PENDING_REFERENCE'
+             AND next_reference_attempt_at <= NOW()
+           FOR UPDATE SKIP LOCKED`,
+          [candidate.id, candidate.wallet_id],
+        );
+
+        if (!pending.rows[0]) {
+          await client.query("ROLLBACK TO SAVEPOINT candidate_lock");
+          continue;
+        }
+
+        row = pending.rows[0];
+        await client.query("RELEASE SAVEPOINT candidate_lock");
+        break;
+      }
+
       if (!row) {
         await client.query("COMMIT");
         return;
