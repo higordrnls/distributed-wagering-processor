@@ -1,4 +1,5 @@
 import { MetricsService } from "./metrics.service";
+import { OrmProvider } from "./orm.provider";
 import { MetricsController } from "./metrics.controller";
 import { ProviderTransactionController } from "./provider-transaction.controller";
 import { Module } from "@nestjs/common";
@@ -14,6 +15,6 @@ import { PendingReferenceReconciler } from "../infra/pending-reference-reconcile
 
 @Module({
   controllers: [MetricsController, HealthController, WalletController, WagerTransactionController, ProviderTransactionController],
-  providers: [MetricsService, databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
+  providers: [OrmProvider, MetricsService, databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
 })
 export class AppModule {}
