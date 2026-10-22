@@ -113,6 +113,47 @@ describe("ProcessWagerTransaction — PostgreSQL", () => {
     expect(ledger.rows).toHaveLength(1);
   });
 
+  test("50 apostas idênticas concorrentes geram um único débito", async () => {
+    const { id: walletId, playerId } = await createWallet("100.00");
+    const externalId = randomUUID();
+    const key = `integration:${externalId}`;
+
+    const results = await Promise.all(
+      Array.from({ length: 50 }, () =>
+        service.execute(
+          makeBet(walletId, playerId, "10.00", externalId, key),
+        ),
+      ),
+    );
+
+    expect(results.filter((r) => r.status === "PROCESSED")).toHaveLength(50);
+    expect(results.filter((r) => r.idempotentReplay === true)).toHaveLength(49);
+    expect(new Set(results.map((r) => r.transactionId)).size).toBe(1);
+
+    const wallet = await pool.query(
+      "SELECT balance FROM wallets WHERE id = $1",
+      [walletId],
+    );
+    const ledger = await pool.query(
+      `SELECT amount, direction
+       FROM wallet_ledger_entries
+       WHERE wallet_id = $1`,
+      [walletId],
+    );
+    const transactions = await pool.query(
+      `SELECT id FROM wager_transactions
+       WHERE provider_id = 'integration-test'
+         AND external_transaction_id = $1`,
+      [externalId],
+    );
+
+    expect(String(wallet.rows[0].balance)).toBe("90.00");
+    expect(ledger.rows).toHaveLength(1);
+    expect(ledger.rows[0].direction).toBe("DEBIT");
+    expect(String(ledger.rows[0].amount)).toBe("10.00");
+    expect(transactions.rows).toHaveLength(1);
+  });
+
   test("repetir a mesma requisição não duplica o lançamento", async () => {
     const { id: walletId, playerId } = await createWallet("100.00");
     const externalId = randomUUID();

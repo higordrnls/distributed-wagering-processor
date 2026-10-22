@@ -51,6 +51,13 @@ export class ProcessWagerTransaction {
     try {
       await client.query("BEGIN");
 
+      // Serializa operações financeiras da mesma carteira antes
+      // de inserir transações ou registros de inbox.
+      await client.query(
+        "SELECT id FROM wallets WHERE id = $1 FOR UPDATE",
+        [transaction.walletId],
+      );
+
       if (inbox) {
         const received = await client.query(
           `INSERT INTO inbox_messages (
