@@ -151,8 +151,7 @@ escolhido: cobre atrasos normais de entrega sem manter transações pendentes in
 ## 6. Observabilidade
 Métricas Prometheus em `GET /metrics`: `wager_transactions_total{status}`,
 `wager_idempotent_replays_total`, `wager_processing_duration_seconds`, `wager_sqs_retries_total`,
-`wager_sqs_dlq_candidates_total`, `wager_reconciliation_mismatches_total`,
-`wager_outbox_lag_seconds` (idade do evento pendente mais antigo, inclusive em backoff).
+`wager_sqs_dlq_candidates_total`, `wager_sqs_dlq_messages` (quantidade aproximada de mensagens visíveis e não visíveis na DLQ), `wager_sqs_dlq_collection_success` (estado da última coleta), `wager_lock_conflicts_total{code}`, `wager_reconciliation_mismatches_total` e `wager_outbox_lag_seconds` (idade do evento pendente mais antigo, inclusive em backoff).
 Health: `/health/live` e `/health/ready` (PostgreSQL e SQS). A reconciliação compara o saldo
 persistido com o calculado pelo ledger; divergências são logadas, contadas e sinalizadas, **nunca
 corrigidas em silêncio**.
@@ -173,8 +172,7 @@ Para produção, a implementação seria substituída por uma integração com u
 
 ## 8. Limitações e pendências conhecidas
 
-- **Observabilidade:** `StructuredLogger` emite logs JSON para stderr e está configurado como logger da aplicação NestJS. Serviços que usam `Logger` do NestJS passam pela implementação configurada. A cobertura de campos de contexto varia conforme o evento.
-- **Métricas:** ainda não há métricas específicas de conflitos de lock nem contagem direta de mensagens presentes na DLQ.
-- **Autenticação:** não há autenticação implementada; permanece fora do escopo funcional adotado, conforme a seção 7.
-- **Tratamento de erros:** o mapeamento explícito de todas as falhas transitórias de banco para HTTP 503 e o comportamento de submissões com wallet inexistente ainda precisam de verificação específica.
-- **Testes:** a suíte possui 148 testes aprovados, incluindo concorrência multiprocesso, recuperação e concorrência do outbox, redelivery e DLQ do SQS, crash de processo e reconciliação de referências pendentes. Isso não substitui testes de carga ou validação em produção.
+- **Observabilidade:** `StructuredLogger` emite logs JSON para stderr e está configurado como logger da aplicação NestJS. A cobertura de campos de contexto varia conforme o evento; ainda convém verificar a consistência dos campos de correlação em todos os caminhos de erro.
+- **Autenticação:** não há autenticação implementada. Isso foi deixado fora do escopo funcional adotado, conforme a seção 2 do enunciado; os endpoints de negócio permanecem públicos.
+- **Tratamento HTTP:** a resposta de erros inesperados e indisponibilidades de banco precisa ser validada por testes de integração, incluindo a distinção entre erro de validação, conflito, recurso inexistente e falha transitória de infraestrutura.
+- **Testes:** a última execução reportada apresentou 162 testes aprovados e 0 falhas. Essa contagem deve ser reproduzida com `bun test` no ambiente configurado. Testes locais não substituem teste de carga nem validação em produção.
