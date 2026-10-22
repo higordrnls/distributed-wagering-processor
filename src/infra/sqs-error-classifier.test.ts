@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { describe, expect, test } from "bun:test";
 import {
   BadRequestException,
@@ -33,4 +34,11 @@ describe("SQS error classifier", () => {
   test("repete erros desconhecidos por segurança", () => {
     expect(classifySqsError(new Error("Unexpected error"))).toBe("RETRY");
   });
+});
+
+
+test("encaminha carteira inexistente para DLQ", () => {
+  expect(
+    classifySqsError(new NotFoundException("Carteira não encontrada")),
+  ).toBe("DLQ");
 });

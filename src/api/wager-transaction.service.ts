@@ -212,11 +212,20 @@ export class WagerTransactionService {
     }
 
     const startedAt = performance.now();
-    const result = await this.processor.execute(transaction, inbox, correlationId).finally(() => {
+    let result: Awaited<ReturnType<ProcessWagerTransaction["execute"]>>;
+
+    try {
+      result = await this.processor.execute(transaction, inbox, correlationId);
+    } catch (error) {
+      if (error instanceof Error && error.message === "Wallet não encontrada") {
+        throw new NotFoundException("Carteira não encontrada");
+      }
+      throw error;
+    } finally {
       this.metrics?.processingDuration.observe(
         (performance.now() - startedAt) / 1000,
       );
-    });
+    }
 
     if (result.conflict) {
       throw new ConflictException({

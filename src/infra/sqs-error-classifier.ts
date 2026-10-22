@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  NotFoundException,
 } from "@nestjs/common";
 
 export type SqsErrorDisposition =
@@ -13,7 +14,10 @@ export function classifySqsError(error: unknown): SqsErrorDisposition {
     return "ACK";
   }
 
-  if (error instanceof BadRequestException) {
+  if (
+    error instanceof BadRequestException ||
+    error instanceof NotFoundException
+  ) {
     return "DLQ";
   }
 
