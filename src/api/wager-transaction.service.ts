@@ -6,7 +6,10 @@ import {
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
-import { ProcessWagerTransaction } from "../application/process-wager-transaction";
+import {
+  ProcessWagerTransaction,
+  type InboxContext,
+} from "../application/process-wager-transaction";
 import { DomainError } from "../domain/errors";
 import { computePayloadHash } from "../domain/payload-hash";
 import { Money } from "../domain/money";
@@ -24,7 +27,11 @@ export class WagerTransactionService {
     this.processor = new ProcessWagerTransaction(pool);
   }
 
-  async submit(input: unknown, idempotencyKey?: string) {
+  async submit(
+    input: unknown,
+    idempotencyKey?: string,
+    inbox?: InboxContext,
+  ) {
     if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) {
       throw new BadRequestException({
         code: "IDEMPOTENCY_KEY_REQUIRED",
@@ -140,7 +147,7 @@ export class WagerTransactionService {
       throw error;
     }
 
-    const result = await this.processor.execute(transaction);
+    const result = await this.processor.execute(transaction, inbox);
 
     if (result.conflict) {
       throw new ConflictException({

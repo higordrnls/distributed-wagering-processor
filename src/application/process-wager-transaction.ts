@@ -35,14 +35,76 @@ function hydrateTransaction(row: DbRow): WagerTransaction {
   return WagerTransaction.rehydrate(state);
 }
 
+export type InboxContext = {
+  consumerName: string;
+  messageId: string;
+  payloadHash: string;
+};
+
 export class ProcessWagerTransaction {
   constructor(private readonly pool: Pool) {}
 
-  async execute(transaction: WagerTransaction) {
+  async execute(transaction: WagerTransaction, inbox?: InboxContext) {
     const client = await this.pool.connect();
 
     try {
       await client.query("BEGIN");
+
+      if (inbox) {
+        const received = await client.query(
+          `INSERT INTO inbox_messages (
+            consumer_name, message_id, payload_hash, received_at, processed_at
+          ) VALUES ($1, $2, $3, NOW(), NULL)
+          ON CONFLICT DO NOTHING
+          RETURNING message_id`,
+          [inbox.consumerName, inbox.messageId, inbox.payloadHash],
+        );
+
+        if (received.rowCount === 0) {
+          const existingInbox = await client.query(
+            `SELECT payload_hash, processed_at
+             FROM inbox_messages
+             WHERE consumer_name = $1 AND message_id = $2
+             FOR UPDATE`,
+            [inbox.consumerName, inbox.messageId],
+          );
+
+          const row = existingInbox.rows[0];
+          if (!row) {
+            throw new Error("Registro de inbox não encontrado após conflito");
+          }
+
+          if (row.payload_hash !== inbox.payloadHash) {
+            throw new Error("INBOX_MESSAGE_ID_CONFLICT");
+          }
+
+          if (row.processed_at) {
+            const previous = await client.query(
+              `SELECT id, status, failure_code, observed_balance
+               FROM wager_transactions
+               WHERE provider_id = $1 AND idempotency_key = $2`,
+              [transaction.providerId, transaction.idempotencyKey],
+            );
+
+            const existing = previous.rows[0];
+
+            await client.query("COMMIT");
+
+            return {
+              conflict: false as const,
+              idempotentReplay: true,
+              inboxReplay: true,
+              transactionId: existing?.id ?? transaction.id,
+              status: existing?.status ?? "REJECTED",
+              failureCode: existing?.failure_code ?? undefined,
+              observedBalance:
+                existing?.observed_balance == null
+                  ? undefined
+                  : String(existing.observed_balance),
+            };
+          }
+        }
+      }
 
       const inserted = await client.query(
         `INSERT INTO wager_transactions (
@@ -96,10 +158,24 @@ export class ProcessWagerTransaction {
           existing.payload_hash === transaction.payloadHash;
 
         if (!sameRequest) {
+          if (inbox) {
+            await client.query(
+              `UPDATE inbox_messages SET processed_at = NOW()
+               WHERE consumer_name = $1 AND message_id = $2`,
+              [inbox.consumerName, inbox.messageId],
+            );
+          }
           await client.query("COMMIT");
           return { conflict: true as const };
         }
 
+        if (inbox) {
+          await client.query(
+            `UPDATE inbox_messages SET processed_at = NOW()
+             WHERE consumer_name = $1 AND message_id = $2`,
+            [inbox.consumerName, inbox.messageId],
+          );
+        }
         await client.query("COMMIT");
         return {
           conflict: false as const,
@@ -231,6 +307,39 @@ export class ProcessWagerTransaction {
           transaction.id,
         ],
       );
+
+      await client.query(
+        `INSERT INTO outbox_messages (
+          id, aggregate_id, event_type, payload, occurred_at
+        ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+        [
+          randomUUID(),
+          transaction.id,
+          "WAGER_TRANSACTION_PROCESSED",
+          JSON.stringify({
+            transactionId: transaction.id,
+            providerId: transaction.providerId,
+            externalTransactionId: transaction.externalTransactionId,
+            walletId: transaction.walletId,
+            playerId: transaction.playerId,
+            kind: transaction.kind,
+            status: transaction.status,
+            money: transaction.money.toJSON(),
+            balance: wallet.balance.toJSON(),
+            failureCode: transaction.failureCode ?? null,
+            occurredAt: now.toISOString(),
+          }),
+          now,
+        ],
+      );
+
+      if (inbox) {
+        await client.query(
+          `UPDATE inbox_messages SET processed_at = NOW()
+           WHERE consumer_name = $1 AND message_id = $2`,
+          [inbox.consumerName, inbox.messageId],
+        );
+      }
 
       await client.query("COMMIT");
 
