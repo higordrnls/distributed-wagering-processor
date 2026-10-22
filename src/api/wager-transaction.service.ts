@@ -94,6 +94,7 @@ export class WagerTransactionService {
     input: unknown,
     idempotencyKey?: string,
     inbox?: InboxContext,
+    correlationId?: string,
   ) {
     if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) {
       throw new BadRequestException({
@@ -211,7 +212,7 @@ export class WagerTransactionService {
     }
 
     const startedAt = performance.now();
-    const result = await this.processor.execute(transaction, inbox).finally(() => {
+    const result = await this.processor.execute(transaction, inbox, correlationId).finally(() => {
       this.metrics?.processingDuration.observe(
         (performance.now() - startedAt) / 1000,
       );

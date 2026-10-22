@@ -45,7 +45,11 @@ export type InboxContext = {
 export class ProcessWagerTransaction {
   constructor(private readonly pool: Pool) {}
 
-  async execute(transaction: WagerTransaction, inbox?: InboxContext) {
+  async execute(
+    transaction: WagerTransaction,
+    inbox?: InboxContext,
+    correlationId: string = randomUUID(),
+  ) {
     const client = await this.pool.connect();
 
     try {
@@ -119,9 +123,9 @@ export class ProcessWagerTransaction {
           id, provider_id, external_transaction_id, idempotency_key,
           payload_hash, wallet_id, player_id, round_id, game_id,
           kind, amount, currency, reference_external_transaction_id,
-          status, created_at
+          status, created_at, correlation_id
         ) VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDING',$14
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDING',$14,$15
         )
         ON CONFLICT DO NOTHING
         RETURNING id`,
@@ -140,6 +144,7 @@ export class ProcessWagerTransaction {
           transaction.money.currency,
           transaction.referenceExternalTransactionId ?? null,
           transaction.createdAt,
+          correlationId,
         ],
       );
 
@@ -347,14 +352,15 @@ export class ProcessWagerTransaction {
 
         await client.query(
           `INSERT INTO outbox_messages (
-            id, aggregate_id, event_type, payload, occurred_at
-          ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+            id, aggregate_id, event_type, payload, occurred_at, correlation_id
+          ) VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
           [
             randomUUID(),
             transaction.id,
             eventType,
             JSON.stringify(eventData),
             now,
+            correlationId,
           ],
         );
       }

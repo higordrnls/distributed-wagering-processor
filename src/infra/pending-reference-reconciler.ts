@@ -170,8 +170,8 @@ export class PendingReferenceReconciler
 
           await client.query(
             `INSERT INTO outbox_messages (
-              id, aggregate_id, event_type, payload, occurred_at
-            ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+              id, aggregate_id, event_type, payload, occurred_at, correlation_id
+            ) VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
             [
               randomUUID(),
               transaction.id,
@@ -189,6 +189,7 @@ export class PendingReferenceReconciler
                 failureCode: transaction.failureCode,
               }),
               new Date(),
+              row.correlation_id ?? transaction.id,
             ],
           );
 
@@ -348,14 +349,15 @@ export class PendingReferenceReconciler
 
         await client.query(
           `INSERT INTO outbox_messages (
-            id, aggregate_id, event_type, payload, occurred_at
-          ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+            id, aggregate_id, event_type, payload, occurred_at, correlation_id
+          ) VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
           [
             randomUUID(),
             transaction.id,
             eventType,
             JSON.stringify(data),
             now,
+            row.correlation_id ?? transaction.id,
           ],
         );
       }

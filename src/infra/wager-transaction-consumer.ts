@@ -21,6 +21,7 @@ import { Optional } from "@nestjs/common";
 
 type WagerEnvelope = {
   messageId: string;
+  correlationId?: string;
   type: "WagerTransactionRequested";
   data: Record<string, unknown> & { idempotencyKey: string };
 };
@@ -126,6 +127,10 @@ export class WagerTransactionConsumer
           messageId: envelope.messageId,
           payloadHash,
         },
+        typeof envelope.correlationId === "string" &&
+        envelope.correlationId.trim()
+          ? envelope.correlationId.trim()
+          : envelope.messageId,
       );
 
       await this.ack(message);

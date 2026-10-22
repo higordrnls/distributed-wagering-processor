@@ -25,12 +25,15 @@ export class WagerTransactionController {
   async submit(
     @Body() body: unknown,
     @Headers("idempotency-key") idempotencyKey: string | undefined,
+    @Headers("x-correlation-id") correlationId: string | undefined,
     @Res({ passthrough: true })
     response: { status: (code: number) => unknown },
   ) {
     const result = await this.wagerTransactionService.submit(
       body,
       idempotencyKey,
+      undefined,
+      correlationId?.trim() || undefined,
     );
 
     response.status(result.httpStatus);

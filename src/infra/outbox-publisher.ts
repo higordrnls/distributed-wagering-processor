@@ -23,6 +23,7 @@ import {
 type OutboxRow = {
   id: string;
   aggregate_id: string;
+  correlation_id: string | null;
   event_type: string;
   payload: unknown;
   occurred_at: Date;
@@ -107,7 +108,7 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
               next_attempt_at = NOW() + INTERVAL '30 seconds'
           FROM available
           WHERE o.id = available.id
-          RETURNING o.id, o.aggregate_id, o.event_type,
+          RETURNING o.id, o.aggregate_id, o.correlation_id, o.event_type,
                     o.payload, o.occurred_at, o.attempts
         `);
 
@@ -176,7 +177,7 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     const props = {
       eventId: message.id,
       aggregateId: message.aggregate_id,
-      correlationId: message.aggregate_id,
+      correlationId: message.correlation_id ?? message.aggregate_id,
       occurredAt: message.occurred_at,
       data: message.payload as Record<string, unknown>,
     };
