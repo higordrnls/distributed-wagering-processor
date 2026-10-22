@@ -29,12 +29,18 @@ fixa de 2 casas do enunciado torna isso suficiente. Entrada aceita `"25"`, `"25.
 escala (ex.: 3 casas), o que está fora do escopo.
 
 ### 2.2 Concorrência: lock pessimista por wallet
-A **primeira instrução** da transação é `SELECT ... FROM wallets WHERE id = $1 FOR UPDATE`.
-Operações da mesma wallet se serializam; wallets diferentes não se bloqueiam (sem lock global).
-A ordem de aquisição é fixa (wallet, depois inbox, depois transação), o que evita deadlock.
-Escolhi lock pessimista porque, numa "hot wallet", o otimista geraria uma enxurrada de retries.
-A coluna `version` incrementa só quando o saldo muda, mas **o controle de concorrência é o lock**,
-não a `version`. Trade-off: o throughput de uma única wallet é serial.
+O processamento financeiro utiliza `LockMode.PESSIMISTIC_WRITE` do MikroORM
+sobre a entidade `WalletEntity`, dentro de `EntityManager.transactional()`.
+O PostgreSQL aplica o bloqueio por wallet, serializando operações concorrentes
+sobre o mesmo saldo sem impor um lock global.
+
+O domínio continua responsável pelas regras financeiras. A coluna `version`
+incrementa somente quando o saldo muda; a proteção principal contra lost updates
+é o bloqueio pessimista.
+
+Trade-off: operações sobre uma mesma wallet são serializadas, limitando o
+throughput de wallets muito disputadas. Wallets diferentes podem avançar
+concorrentemente.
 
 ### 2.3 Idempotência persistente
 `INSERT ... ON CONFLICT DO NOTHING` em `wager_transactions`, com `UNIQUE(provider_id,
@@ -45,13 +51,26 @@ JSON canônico (chaves ordenadas recursivamente, `undefined` omitido, valor norm
 campos de negócio. O header `Idempotency-Key` e metadados de transporte ficam fora. No caminho SQS,
 a inbox (`PRIMARY KEY (consumer_name, message_id)`) é gravada na mesma transação.
 
-### 2.4 ORM e transações (desvio declarado)
-O MikroORM v6 é usado para **migrations versionadas e reversíveis** (`Migrator`, com `up` e `down`
-testados) e no preparo dos testes. As queries de negócio usam **`pg` com SQL explícito** dentro de
-uma transação `BEGIN/COMMIT`. Motivo: `FOR UPDATE`, `ON CONFLICT` e `SKIP LOCKED` ficam visíveis e
-auditáveis, e o domínio permanece puro, com `rehydrate` manual. Limitação: não usamos Unit of Work,
-Identity Map, `LockMode` nem `EntityManager.transactional()` no caminho quente. É um desvio da
-preferência do enunciado por MikroORM no caminho transacional.
+### 2.4 MikroORM, Unit of Work e transações
+O MikroORM v6 gerencia o contexto transacional do processamento financeiro.
+Cada execução utiliza um `EntityManager` isolado (`fork`) e
+`EntityManager.transactional()` para garantir atomicidade.
+
+A wallet é carregada com `LockMode.PESSIMISTIC_WRITE`. A instância gerenciada
+participa do Identity Map e suas alterações de saldo, versão e atualização
+são persistidas pelo Unit of Work por meio de `flush()`.
+
+As operações auxiliares de persistência de transações, ledger, inbox e outbox
+utilizam SQL explícito por meio de `OrmTransactionQuery`, compartilhando o
+mesmo contexto transacional do MikroORM. Assim, todas as alterações financeiras
+são confirmadas ou revertidas juntas.
+
+A escolha híbrida preserva o domínio independente de ORM e mantém explícitas
+as operações SQL que dependem de constraints, `ON CONFLICT` e outros recursos
+do PostgreSQL.
+
+Trade-off: parte da persistência utiliza SQL explícito, exigindo atenção
+para manter o contexto transacional e o estado gerenciado sincronizados.
 
 ### 2.5 Estados e transições
     PENDING           -> PROCESSED | REJECTED | FAILED | PENDING_REFERENCE
@@ -145,9 +164,8 @@ global no Nest, com os endpoints de health abertos e a fila tratada como canal i
 
 ## 8. Limitações e pendências conhecidas
 
-- **ORM:** MikroORM é utilizado nas migrations e no preparo dos testes. O caminho transacional de negócio utiliza SQL explícito com `pg`, conforme o desvio documentado na seção 2.4.
 - **Observabilidade:** `StructuredLogger` emite logs JSON para stderr e está configurado como logger da aplicação NestJS. Serviços que usam `Logger` do NestJS passam pela implementação configurada. A cobertura de campos de contexto varia conforme o evento.
 - **Métricas:** ainda não há métricas específicas de conflitos de lock nem contagem direta de mensagens presentes na DLQ.
 - **Autenticação:** não há autenticação implementada; permanece fora do escopo funcional adotado, conforme a seção 7.
 - **Tratamento de erros:** o mapeamento explícito de todas as falhas transitórias de banco para HTTP 503 e o comportamento de submissões com wallet inexistente ainda precisam de verificação específica.
-- **Testes:** a suíte possui 124 testes aprovados, incluindo concorrência multiprocesso, recuperação e concorrência do outbox, redelivery e DLQ do SQS, crash de processo e reconciliação de referências pendentes. Isso não substitui testes de carga ou validação em produção.
+- **Testes:** a suíte possui 148 testes aprovados, incluindo concorrência multiprocesso, recuperação e concorrência do outbox, redelivery e DLQ do SQS, crash de processo e reconciliação de referências pendentes. Isso não substitui testes de carga ou validação em produção.

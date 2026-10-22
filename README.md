@@ -90,9 +90,15 @@ ao longo do processamento e da publicação de eventos.
 
 ## Validação
 
-Na última execução local, a suíte apresentou **124 testes aprovados,
-0 falhas, em 21 arquivos**. Os testes de integração utilizam PostgreSQL
-e SQS em containers, não apenas mocks.
+Na última execução local, a suíte apresentou **148 testes aprovados,
+0 falhas, em 30 arquivos**, com **578 verificações**.
+
+A suíte inclui testes de concorrência entre processos Bun, bloqueio
+pessimista e Unit of Work pelo MikroORM, idempotência, reentrega de
+mensagens SQS e rollback de operações financeiras.
+
+Os testes de integração utilizam PostgreSQL e SQS em containers,
+não apenas mocks.
 
 ## Encerrar
 Ctrl+C nos processos Bun e `docker compose down` (evite `-v` para preservar os dados).
