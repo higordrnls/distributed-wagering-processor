@@ -40,6 +40,47 @@ afterAll(async () => {
 });
 
 describe("API — consultas e reconciliação", () => {
+  test("contrato HTTP de wallet e ledger usa objetos monetários", async () => {
+    const created = await wallets.create({
+      playerId: randomUUID(),
+      initialBalance: { amount: "125.50", currency: "BRL" },
+    });
+
+    expect(created.id).toBeDefined();
+    expect(created.balance).toEqual({
+      amount: "125.50",
+      currency: "BRL",
+    });
+    expect(created.version).toBe(1);
+
+    const fetched = await wallets.findById(created.id);
+
+    expect(fetched.id).toBe(created.id);
+    expect(fetched.playerId).toBe(created.playerId);
+    expect(fetched.balance).toEqual({
+      amount: "125.50",
+      currency: "BRL",
+    });
+
+    const ledger = await wallets.findLedger(created.id, {});
+
+    expect(ledger.walletId).toBe(created.id);
+    expect(ledger.entries).toHaveLength(1);
+    expect(ledger.entries[0].direction).toBe("CREDIT");
+    expect(ledger.entries[0].amount).toEqual({
+      amount: "125.50",
+      currency: "BRL",
+    });
+    expect(ledger.entries[0].balanceBefore).toEqual({
+      amount: "0.00",
+      currency: "BRL",
+    });
+    expect(ledger.entries[0].balanceAfter).toEqual({
+      amount: "125.50",
+      currency: "BRL",
+    });
+  });
+
   test("consulta uma transação por ID e por provider + ID externo", async () => {
     const providerId = `provider-${randomUUID()}`;
     const externalId = randomUUID();
@@ -49,12 +90,15 @@ describe("API — consultas e reconciliação", () => {
       initialBalance: { amount: "100.00", currency: "BRL" },
     });
 
+    expect(wallet.id).toBeDefined();
+    expect(wallet.balance).toEqual({ amount: "100.00", currency: "BRL" });
+
     const submitted = await transactions.submit(
       {
         providerId,
         externalTransactionId: externalId,
         playerId: wallet.playerId,
-        walletId: wallet.walletId,
+        walletId: wallet.id,
         roundId: randomUUID(),
         gameId: "integration-game",
         kind: "BET",
@@ -141,7 +185,7 @@ describe("API — consultas e reconciliação", () => {
       initialBalance: { amount: "75.00", currency: "BRL" },
     });
 
-    const result = await wallets.reconcile(wallet.walletId);
+    const result = await wallets.reconcile(wallet.id);
 
     expect(result.storedBalance).toEqual({ amount: "75.00", currency: "BRL" });
     expect(result.calculatedBalance).toEqual({ amount: "75.00", currency: "BRL" });
@@ -161,13 +205,13 @@ describe("API — consultas e reconciliação", () => {
 
     await pool.query(
       "UPDATE wallets SET balance = 95.00 WHERE id = $1",
-      [wallet.walletId],
+      [wallet.id],
     );
 
     const before = await metrics.render();
     expect(before).toContain("wager_reconciliation_mismatches_total 0");
 
-    const result = await instrumentedWallets.reconcile(wallet.walletId);
+    const result = await instrumentedWallets.reconcile(wallet.id);
 
     expect(result.storedBalance).toEqual({ amount: "95.00", currency: "BRL" });
     expect(result.calculatedBalance).toEqual({ amount: "100.00", currency: "BRL" });
@@ -177,8 +221,8 @@ describe("API — consultas e reconciliação", () => {
     const after = await metrics.render();
     expect(after).toContain("wager_reconciliation_mismatches_total 1");
 
-    const persisted = await instrumentedWallets.findById(wallet.walletId);
-    expect(persisted.balance).toBe("95.00");
+    const persisted = await instrumentedWallets.findById(wallet.id);
+    expect(persisted.balance).toEqual({ amount: "95.00", currency: "BRL" });
   });
 
   test("reconciliação de carteira inexistente retorna NotFoundException", async () => {
@@ -220,7 +264,7 @@ describe("API — consultas e reconciliação", () => {
       }),
     ).rejects.toMatchObject({ status: 409 });
 
-    const persisted = await wallets.findById(first.walletId);
-    expect(persisted.balance).toBe("100.00");
+    const persisted = await wallets.findById(first.id);
+    expect(persisted.balance).toEqual({ amount: "100.00", currency: "BRL" });
   });
 });

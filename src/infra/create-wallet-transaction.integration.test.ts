@@ -48,19 +48,19 @@ describe("WalletService — integração com MikroORM", () => {
 
     const wallet = await pool.query(
       "SELECT balance FROM wallets WHERE id = $1",
-      [result.walletId],
+      [result.id],
     );
 
     const transaction = await pool.query(
       `SELECT id, status FROM wager_transactions
        WHERE wallet_id = $1 AND kind = 'OPENING'`,
-      [result.walletId],
+      [result.id],
     );
 
     const ledger = await pool.query(
       `SELECT balance_before, balance_after
        FROM wallet_ledger_entries WHERE wallet_id = $1`,
-      [result.walletId],
+      [result.id],
     );
 
     expect(wallet.rows[0]?.balance).toBe("125.50");

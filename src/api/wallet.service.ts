@@ -79,10 +79,9 @@ export class WalletService {
       );
 
       return {
-        walletId: wallet.id,
+        id: wallet.id,
         playerId: wallet.playerId,
-        currency: wallet.currency,
-        balance: wallet.balance.toString(),
+        balance: wallet.balance.toJSON(),
         version: wallet.version,
       };
     } catch (error) {
@@ -166,8 +165,14 @@ export class WalletService {
           amount: String(row.amount),
           currency: row.currency,
         },
-        balanceBefore: String(row.balance_before),
-        balanceAfter: String(row.balance_after),
+        balanceBefore: {
+          amount: String(row.balance_before),
+          currency: row.currency,
+        },
+        balanceAfter: {
+          amount: String(row.balance_after),
+          currency: row.currency,
+        },
         createdAt: row.created_at,
       })),
       nextCursor: hasMore && lastSeq !== null
@@ -256,10 +261,12 @@ export class WalletService {
     }
 
     return {
-      walletId: wallet.id,
+      id: wallet.id,
       playerId: wallet.player_id,
-      currency: wallet.currency,
-      balance: String(wallet.balance),
+      balance: {
+        amount: String(wallet.balance),
+        currency: wallet.currency,
+      },
       version: wallet.version,
       createdAt: wallet.created_at,
       updatedAt: wallet.updated_at,

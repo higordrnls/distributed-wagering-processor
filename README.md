@@ -61,7 +61,7 @@ curl -X POST http://localhost:3000/wallets \
   -d '{"playerId":"player-demo","initialBalance":{"amount":"1000.00","currency":"BRL"}}'
 ```
 
-Copie o `walletId` retornado e utilize-o para enviar uma aposta:
+Copie o campo `id` retornado na criação da carteira e utilize-o como `walletId` para enviar uma aposta:
 
 ```bash
 curl -X POST http://localhost:3000/wagering/transactions \
