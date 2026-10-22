@@ -9,6 +9,7 @@ import {
   type WagerTransactionState,
 } from "../domain/wager-transaction";
 import { Wallet } from "../domain/wallet";
+import { selectWagerEvents } from "./wager-event-types";
 
 type DbRow = Record<string, any>;
 
@@ -308,30 +309,48 @@ export class ProcessWagerTransaction {
         ],
       );
 
-      await client.query(
-        `INSERT INTO outbox_messages (
-          id, aggregate_id, event_type, payload, occurred_at
-        ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
-        [
-          randomUUID(),
-          transaction.id,
-          "WAGER_TRANSACTION_PROCESSED",
-          JSON.stringify({
-            transactionId: transaction.id,
-            providerId: transaction.providerId,
-            externalTransactionId: transaction.externalTransactionId,
-            walletId: transaction.walletId,
-            playerId: transaction.playerId,
-            kind: transaction.kind,
-            status: transaction.status,
-            money: transaction.money.toJSON(),
-            balance: wallet.balance.toJSON(),
-            failureCode: transaction.failureCode ?? null,
-            occurredAt: now.toISOString(),
-          }),
-          now,
-        ],
-      );
+      const eventTypes = selectWagerEvents({
+        status: transaction.status,
+        balanceBefore: entry?.balanceBefore.toString(),
+        balanceAfter: entry?.balanceAfter.toString(),
+      });
+
+      for (const eventType of eventTypes) {
+        const eventData =
+          eventType === "WalletBalanceChanged"
+            ? {
+                walletId: wallet.id,
+                transactionId: transaction.id,
+                playerId: transaction.playerId,
+                balanceBefore: entry!.balanceBefore.toJSON(),
+                balanceAfter: entry!.balanceAfter.toJSON(),
+              }
+            : {
+                transactionId: transaction.id,
+                providerId: transaction.providerId,
+                externalTransactionId: transaction.externalTransactionId,
+                walletId: transaction.walletId,
+                playerId: transaction.playerId,
+                kind: transaction.kind,
+                status: transaction.status,
+                money: transaction.money.toJSON(),
+                balance: wallet.balance.toJSON(),
+                failureCode: transaction.failureCode ?? null,
+              };
+
+        await client.query(
+          `INSERT INTO outbox_messages (
+            id, aggregate_id, event_type, payload, occurred_at
+          ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+          [
+            randomUUID(),
+            transaction.id,
+            eventType,
+            JSON.stringify(eventData),
+            now,
+          ],
+        );
+      }
 
       if (inbox) {
         await client.query(

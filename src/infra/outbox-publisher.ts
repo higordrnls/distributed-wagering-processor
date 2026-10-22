@@ -120,8 +120,10 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
               MessageBody: JSON.stringify({
                 eventId: message.id,
                 eventType: message.event_type,
+                aggregateId: message.aggregate_id,
+                correlationId: message.aggregate_id,
                 occurredAt: message.occurred_at,
-                payload: message.payload,
+                data: message.payload,
               }),
               MessageGroupId: message.aggregate_id,
               MessageDeduplicationId: message.id,
