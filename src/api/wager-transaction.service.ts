@@ -21,6 +21,7 @@ import {
 } from "../domain/wager-transaction";
 import { DATABASE_POOL } from "./database.provider";
 import { MetricsService } from "./metrics.service";
+import { OrmProvider } from "./orm.provider";
 import { Optional } from "@nestjs/common";
 
 @Injectable()
@@ -31,8 +32,18 @@ export class WagerTransactionService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     @Optional() private readonly metrics?: MetricsService,
+    @Optional() private readonly ormProvider?: OrmProvider,
   ) {
     this.processor = new ProcessWagerTransaction(pool);
+  }
+
+  private async getProcessor(): Promise<ProcessWagerTransaction> {
+    if (!this.ormProvider) {
+      return this.processor;
+    }
+
+    const orm = await this.ormProvider.getOrm();
+    return new ProcessWagerTransaction(this.pool, orm);
   }
 
   async findById(transactionId: string) {
@@ -217,7 +228,8 @@ export class WagerTransactionService {
     let result: Awaited<ReturnType<ProcessWagerTransaction["execute"]>>;
 
     try {
-      result = await this.processor.execute(transaction, inbox, correlationId);
+      const processor = await this.getProcessor();
+      result = await processor.execute(transaction, inbox, correlationId);
     } catch (error) {
       if (error instanceof Error && error.message === "Wallet não encontrada") {
         throw new NotFoundException("Carteira não encontrada");

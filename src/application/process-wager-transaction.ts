@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import type { MikroORM } from "@mikro-orm/postgresql";
 import { computePayloadHash } from "../domain/payload-hash";
 import { processWager } from "../domain/process-wager";
 import { Money } from "../domain/money";
@@ -43,7 +44,10 @@ export type InboxContext = {
 };
 
 export class ProcessWagerTransaction {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly orm?: MikroORM,
+  ) {}
 
   async execute(
     transaction: WagerTransaction,
