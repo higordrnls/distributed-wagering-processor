@@ -7,7 +7,7 @@ import { Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { InfrastructureExceptionFilter } from "./infrastructure-exception.filter";
 import { HealthController } from "./health.controller";
-import { databasePoolProvider } from "./database.provider";
+import { databasePoolProvider, DatabasePoolLifecycle } from "./database.provider";
 import { WalletController } from "./wallet.controller";
 import { WalletService } from "./wallet.service";
 import { WagerTransactionController } from "./wager-transaction.controller";
@@ -18,6 +18,6 @@ import { PendingReferenceReconciler } from "../infra/pending-reference-reconcile
 
 @Module({
   controllers: [MetricsController, HealthController, WalletController, WagerTransactionController, ProviderTransactionController],
-  providers: [{ provide: APP_FILTER, useClass: InfrastructureExceptionFilter }, { provide: ProviderIdentityPort, useClass: UnauthenticatedProviderIdentity }, OrmProvider, MetricsService, databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
+  providers: [{ provide: APP_FILTER, useClass: InfrastructureExceptionFilter }, { provide: ProviderIdentityPort, useClass: UnauthenticatedProviderIdentity }, OrmProvider, MetricsService, databasePoolProvider, DatabasePoolLifecycle, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
 })
 export class AppModule {}

@@ -1,3 +1,4 @@
+import { Injectable, Inject, OnApplicationShutdown } from "@nestjs/common";
 import { Pool } from "pg";
 
 export const DATABASE_POOL = "DATABASE_POOL";
@@ -13,3 +14,13 @@ export const databasePoolProvider = {
       database: process.env.DB_NAME ?? "wager",
     }),
 };
+
+
+@Injectable()
+export class DatabasePoolLifecycle implements OnApplicationShutdown {
+  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.pool.end();
+  }
+}
