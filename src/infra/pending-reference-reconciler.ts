@@ -8,6 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { Money } from "../domain/money";
+import { FailureCode } from "../domain/failure-code";
 import { Wallet } from "../domain/wallet";
 import { processWager } from "../domain/process-wager";
 import {
@@ -147,6 +148,57 @@ export class PendingReferenceReconciler
         !["PROCESSED", "REJECTED", "FAILED"].includes(referenceRow.status)
       ) {
         const attempts = Number(row.reference_attempts) + 1;
+        const maxAttempts = 10;
+
+        if (attempts >= maxAttempts) {
+          transaction.reject(FailureCode.ReferenceNotFound);
+
+          await client.query(
+            `UPDATE wager_transactions
+             SET status = $2,
+                 failure_code = $3,
+                 reference_attempts = $4,
+                 next_reference_attempt_at = NULL
+             WHERE id = $1`,
+            [
+              transaction.id,
+              transaction.status,
+              transaction.failureCode,
+              attempts,
+            ],
+          );
+
+          await client.query(
+            `INSERT INTO outbox_messages (
+              id, aggregate_id, event_type, payload, occurred_at
+            ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+            [
+              randomUUID(),
+              transaction.id,
+              "WagerTransactionRejected",
+              JSON.stringify({
+                transactionId: transaction.id,
+                providerId: transaction.providerId,
+                externalTransactionId: transaction.externalTransactionId,
+                walletId: transaction.walletId,
+                playerId: transaction.playerId,
+                kind: transaction.kind,
+                status: transaction.status,
+                money: transaction.money.toJSON(),
+                balance: wallet.balance.toJSON(),
+                failureCode: transaction.failureCode,
+              }),
+              new Date(),
+            ],
+          );
+
+          await client.query("COMMIT");
+          this.logger.warn(
+            `Referência esgotada para transação ${transaction.id}`,
+          );
+          return;
+        }
+
         const delay = Math.min(300, 2 ** Math.min(attempts, 8));
 
         await client.query(

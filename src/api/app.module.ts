@@ -7,9 +7,10 @@ import { WagerTransactionController } from "./wager-transaction.controller";
 import { WagerTransactionService } from "./wager-transaction.service";
 import { OutboxPublisher } from "../infra/outbox-publisher";
 import { WagerTransactionConsumer } from "../infra/wager-transaction-consumer";
+import { PendingReferenceReconciler } from "../infra/pending-reference-reconciler";
 
 @Module({
   controllers: [HealthController, WalletController, WagerTransactionController],
-  providers: [databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer],
+  providers: [databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
 })
 export class AppModule {}
