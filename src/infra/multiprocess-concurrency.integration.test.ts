@@ -174,4 +174,59 @@ describe("Concorrência distribuída — 3 processos Bun", () => {
     expect(transactions.rows[0].status).toBe("PROCESSED");
   }, 30000);
 
+
+  test("processa apostas de wallets distintas em paralelo", async () => {
+    const wallets = Array.from({ length: 3 }, () => ({
+      walletId: randomUUID(),
+      playerId: randomUUID(),
+      externalId: randomUUID(),
+    }));
+
+    for (const wallet of wallets) {
+      await pool.query(
+        `INSERT INTO wallets (
+           id, player_id, currency, balance,
+           version, created_at, updated_at
+         ) VALUES ($1, $2, 'BRL', '100.00', 1, NOW(), NOW())`,
+        [wallet.walletId, wallet.playerId],
+      );
+    }
+
+    const results = await Promise.all(
+      wallets.map((wallet) =>
+        runWorker(wallet.walletId, wallet.playerId, wallet.externalId),
+      ),
+    );
+
+    expect(results).toHaveLength(3);
+    expect(results.every((result) => result.status === "PROCESSED")).toBe(true);
+    expect(results.every((result) => result.idempotentReplay === false)).toBe(true);
+
+    for (const wallet of wallets) {
+      const balance = await pool.query(
+        "SELECT balance FROM wallets WHERE id = $1",
+        [wallet.walletId],
+      );
+
+      const ledger = await pool.query(
+        `SELECT direction, amount
+         FROM wallet_ledger_entries
+         WHERE wallet_id = $1`,
+        [wallet.walletId],
+      );
+
+      const transactions = await pool.query(
+        `SELECT status FROM wager_transactions WHERE wallet_id = $1`,
+        [wallet.walletId],
+      );
+
+      expect(String(balance.rows[0].balance)).toBe("20.00");
+      expect(ledger.rows).toHaveLength(1);
+      expect(ledger.rows[0].direction).toBe("DEBIT");
+      expect(String(ledger.rows[0].amount)).toBe("80.00");
+      expect(transactions.rows).toHaveLength(1);
+      expect(transactions.rows[0].status).toBe("PROCESSED");
+    }
+  }, 30000);
+
 });
