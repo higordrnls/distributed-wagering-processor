@@ -251,6 +251,7 @@ export class WagerTransactionService {
           correlationId,
           transactionId: transaction.id,
           walletId: transaction.walletId,
+          providerId: transaction.providerId,
           code: pgCode,
         });
       }
@@ -271,6 +272,7 @@ export class WagerTransactionService {
         correlationId,
         transactionId: transaction.id,
         walletId: transaction.walletId,
+        providerId: transaction.providerId,
       });
       throw new ConflictException({
         code: "IDEMPOTENCY_CONFLICT",

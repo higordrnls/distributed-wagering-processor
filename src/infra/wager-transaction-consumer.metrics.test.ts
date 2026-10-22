@@ -102,6 +102,7 @@ describe("Logs do consumer SQS", () => {
 
     expect(events).toContainEqual({
       event: "sqs_business_conflict",
+      messageId: "event-conflict",
       sqsMessageId: "sqs-conflict",
       disposition: "ACK",
     });
@@ -136,6 +137,7 @@ describe("Logs do consumer SQS", () => {
 
     expect(events).toContainEqual({
       event: "sqs_permanent_failure",
+      messageId: "invalid-log-message",
       sqsMessageId: "invalid-log-message",
       disposition: "DLQ",
       errorName: "BadRequestException",
@@ -179,6 +181,7 @@ describe("Logs do consumer SQS", () => {
 
     expect(events).toContainEqual({
       event: "sqs_retry_scheduled",
+      messageId: "retry-1",
       sqsMessageId: "retry-log-message",
       disposition: "RETRY",
       receiveCount: 2,

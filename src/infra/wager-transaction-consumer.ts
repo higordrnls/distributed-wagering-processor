@@ -162,8 +162,10 @@ export class WagerTransactionConsumer
         throw new BadRequestException("Mensagem SQS inválida");
       }
 
+      // Deduplicação da inbox considera os dados da operação,
+      // não metadados de transporte do envelope SQS.
       const payloadHash = createHash("sha256")
-        .update(canonicalJson(envelope))
+        .update(canonicalJson(envelope.data))
         .digest("hex");
 
       const result = await this.service.submit(
@@ -200,9 +202,42 @@ export class WagerTransactionConsumer
       await stopRenewal();
       const disposition = classifySqsError(error);
 
+      // Recupera apenas identificadores seguros para diagnóstico.
+      let context: Record<string, unknown> = {
+        messageId: message.MessageId,
+      };
+
+      try {
+        const parsed: unknown = JSON.parse(message.Body);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const envelope = parsed as Record<string, unknown>;
+          const data =
+            envelope.data && typeof envelope.data === "object" &&
+            !Array.isArray(envelope.data)
+              ? envelope.data as Record<string, unknown>
+              : {};
+
+          const identifiers: Record<string, unknown> = {};
+          for (const [key, value] of [
+            ["messageId", envelope.messageId],
+            ["correlationId", envelope.correlationId],
+            ["providerId", data.providerId],
+            ["walletId", data.walletId],
+          ] as const) {
+            if (typeof value === "string" && value.trim()) {
+              identifiers[key] = value;
+            }
+          }
+          context = { ...context, ...identifiers };
+        }
+      } catch {
+        // Envelope inválido: mantém apenas o identificador do SQS.
+      }
+
       if (disposition === "ACK") {
         this.logger.warn({
           event: "sqs_business_conflict",
+          ...context,
           sqsMessageId: message.MessageId,
           disposition: "ACK",
         });
@@ -214,6 +249,7 @@ export class WagerTransactionConsumer
         this.metrics?.dlqCandidates.inc();
         this.logger.warn({
           event: "sqs_permanent_failure",
+          ...context,
           sqsMessageId: message.MessageId,
           disposition: "DLQ",
           errorName: error instanceof Error ? error.name : "UnknownError",
@@ -234,6 +270,7 @@ export class WagerTransactionConsumer
 
       this.logger.error({
         event: "sqs_retry_scheduled",
+          ...context,
         sqsMessageId: message.MessageId,
         disposition: "RETRY",
         receiveCount,
