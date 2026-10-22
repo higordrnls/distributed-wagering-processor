@@ -39,6 +39,31 @@ afterAll(async () => {
   await orm?.close(true);
 });
 
+describe("API — validação da criação de carteira", () => {
+  test("dados ausentes ou inválidos retornam 400", async () => {
+    await expect(
+      wallets.create({
+        playerId: "",
+        initialBalance: { amount: "10.00", currency: "BRL" },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    await expect(
+      wallets.create({
+        playerId: randomUUID(),
+        initialBalance: { amount: "10.001", currency: "BRL" },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    await expect(
+      wallets.create({
+        playerId: randomUUID(),
+        initialBalance: { amount: "10.00", currency: "brl" },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
 describe("API — consultas e reconciliação", () => {
   test("consulta uma transação por ID e por provider + ID externo", async () => {
     const providerId = `provider-${randomUUID()}`;
