@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Headers,
+  Get,
+  Param,
   Post,
   Res,
 } from "@nestjs/common";
@@ -13,6 +15,11 @@ export class WagerTransactionController {
   constructor(
     private readonly wagerTransactionService: WagerTransactionService,
   ) {}
+
+  @Get(":transactionId")
+  findById(@Param("transactionId") transactionId: string) {
+    return this.wagerTransactionService.findById(transactionId);
+  }
 
   @Post()
   async submit(

@@ -221,6 +221,48 @@ export class WalletService {
     };
   }
 
+  async reconcile(walletId: string) {
+    const result = await this.pool.query(
+      `SELECT
+         w.id,
+         w.currency,
+         w.balance AS stored_balance,
+         COALESCE(
+           SUM(
+             CASE
+               WHEN l.direction = 'CREDIT' THEN l.amount
+               WHEN l.direction = 'DEBIT' THEN -l.amount
+             END
+           ),
+           0
+         ) AS calculated_balance,
+         COUNT(l.id)::integer AS ledger_entries
+       FROM wallets w
+       LEFT JOIN wallet_ledger_entries l ON l.wallet_id = w.id
+       WHERE w.id = $1
+       GROUP BY w.id, w.currency, w.balance`,
+      [walletId],
+    );
+
+    const row = result.rows[0];
+
+    if (!row) {
+      throw new NotFoundException("Carteira não encontrada");
+    }
+
+    const storedBalance = String(row.stored_balance);
+    const calculatedBalance = String(row.calculated_balance);
+
+    return {
+      walletId: row.id,
+      currency: row.currency,
+      storedBalance,
+      calculatedBalance,
+      ledgerEntries: row.ledger_entries,
+      consistent: storedBalance === calculatedBalance,
+    };
+  }
+
   async findById(walletId: string) {
     const result = await this.pool.query(
       `SELECT id, player_id, currency, balance, version, created_at, updated_at

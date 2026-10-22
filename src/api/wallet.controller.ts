@@ -14,6 +14,11 @@ import { WalletService } from "./wallet.service";
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
 
+  @Post(":walletId/reconciliation")
+  reconcile(@Param("walletId") walletId: string) {
+    return this.walletService.reconcile(walletId);
+  }
+
   @Get(":walletId/ledger")
   findLedger(
     @Param("walletId") walletId: string,

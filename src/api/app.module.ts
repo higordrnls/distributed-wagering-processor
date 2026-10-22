@@ -1,3 +1,4 @@
+import { ProviderTransactionController } from "./provider-transaction.controller";
 import { Module } from "@nestjs/common";
 import { HealthController } from "./health.controller";
 import { databasePoolProvider } from "./database.provider";
@@ -10,7 +11,7 @@ import { WagerTransactionConsumer } from "../infra/wager-transaction-consumer";
 import { PendingReferenceReconciler } from "../infra/pending-reference-reconciler";
 
 @Module({
-  controllers: [HealthController, WalletController, WagerTransactionController],
+  controllers: [HealthController, WalletController, WagerTransactionController, ProviderTransactionController],
   providers: [databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
 })
 export class AppModule {}

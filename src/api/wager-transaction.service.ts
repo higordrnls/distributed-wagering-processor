@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
@@ -25,6 +26,63 @@ export class WagerTransactionService {
 
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {
     this.processor = new ProcessWagerTransaction(pool);
+  }
+
+  async findById(transactionId: string) {
+    const result = await this.pool.query(
+      `SELECT *
+       FROM wager_transactions
+       WHERE id = $1`,
+      [transactionId],
+    );
+
+    if (!result.rows[0]) {
+      throw new NotFoundException("Transação não encontrada");
+    }
+
+    return this.toTransactionResponse(result.rows[0]);
+  }
+
+  async findByExternalId(
+    providerId: string,
+    externalTransactionId: string,
+  ) {
+    const result = await this.pool.query(
+      `SELECT *
+       FROM wager_transactions
+       WHERE provider_id = $1
+         AND external_transaction_id = $2`,
+      [providerId, externalTransactionId],
+    );
+
+    if (!result.rows[0]) {
+      throw new NotFoundException("Transação não encontrada");
+    }
+
+    return this.toTransactionResponse(result.rows[0]);
+  }
+
+  private toTransactionResponse(row: Record<string, unknown>) {
+    return {
+      transactionId: row.id,
+      providerId: row.provider_id,
+      externalTransactionId: row.external_transaction_id,
+      walletId: row.wallet_id,
+      playerId: row.player_id,
+      roundId: row.round_id,
+      gameId: row.game_id,
+      kind: row.kind,
+      money: {
+        amount: String(row.amount),
+        currency: row.currency,
+      },
+      status: row.status,
+      referenceExternalTransactionId:
+        row.reference_external_transaction_id,
+      failureCode: row.failure_code,
+      createdAt: row.created_at,
+      processedAt: row.processed_at,
+    };
   }
 
   async submit(

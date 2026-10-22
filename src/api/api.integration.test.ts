@@ -1,0 +1,124 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { NotFoundException } from "@nestjs/common";
+import { Pool } from "pg";
+import { createTestOrm } from "../infra/test-db";
+import { WalletService } from "./wallet.service";
+import { WagerTransactionService } from "./wager-transaction.service";
+
+let pool: Pool;
+let wallets: WalletService;
+let transactions: WagerTransactionService;
+
+beforeAll(async () => {
+  const orm = await createTestOrm();
+  await orm.close(true);
+
+  pool = new Pool({
+    host: process.env.DB_HOST ?? "localhost",
+    port: Number(process.env.DB_PORT ?? 5433),
+    user: process.env.DB_USER ?? "wager",
+    password: process.env.DB_PASSWORD ?? "wager",
+    database: "wager_test",
+  });
+
+  wallets = new WalletService(pool);
+  transactions = new WagerTransactionService(pool);
+});
+
+afterAll(async () => {
+  await pool?.end();
+});
+
+describe("API — consultas e reconciliação", () => {
+  test("consulta uma transação por ID e por provider + ID externo", async () => {
+    const providerId = `provider-${randomUUID()}`;
+    const externalId = randomUUID();
+
+    const wallet = await wallets.create({
+      playerId: randomUUID(),
+      initialBalance: { amount: "100.00", currency: "BRL" },
+    });
+
+    const submitted = await transactions.submit(
+      {
+        providerId,
+        externalTransactionId: externalId,
+        playerId: wallet.playerId,
+        walletId: wallet.walletId,
+        roundId: randomUUID(),
+        gameId: "integration-game",
+        kind: "BET",
+        money: { amount: "10.00", currency: "BRL" },
+      },
+      randomUUID(),
+    );
+
+    expect(submitted.httpStatus).toBe(200);
+
+    const transactionId = submitted.body.transactionId;
+
+    const byId = await transactions.findById(transactionId);
+    const byExternal = await transactions.findByExternalId(
+      providerId,
+      externalId,
+    );
+
+    expect(byId.transactionId).toBe(transactionId);
+    expect(byExternal.transactionId).toBe(transactionId);
+    expect(byId.status).toBe("PROCESSED");
+    expect(byExternal.money.amount).toBe("10.00");
+  });
+
+  test("transação inexistente retorna NotFoundException", async () => {
+    await expect(
+      transactions.findById(randomUUID()),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    await expect(
+      transactions.findByExternalId("provider-inexistente", randomUUID()),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  test("reconciliação confirma saldo consistente", async () => {
+    const wallet = await wallets.create({
+      playerId: randomUUID(),
+      initialBalance: { amount: "75.00", currency: "BRL" },
+    });
+
+    const result = await wallets.reconcile(wallet.walletId);
+
+    expect(result.storedBalance).toBe("75.00");
+    expect(result.calculatedBalance).toBe("75.00");
+    expect(result.ledgerEntries).toBe(1);
+    expect(result.consistent).toBe(true);
+  });
+
+  test("reconciliação detecta divergência sem alterar o saldo", async () => {
+    const wallet = await wallets.create({
+      playerId: randomUUID(),
+      initialBalance: { amount: "100.00", currency: "BRL" },
+    });
+
+    // Corrupção simulada exclusivamente no banco de testes.
+    await pool.query(
+      "UPDATE wallets SET balance = 95.00 WHERE id = $1",
+      [wallet.walletId],
+    );
+
+    const result = await wallets.reconcile(wallet.walletId);
+
+    expect(result.storedBalance).toBe("95.00");
+    expect(result.calculatedBalance).toBe("100.00");
+    expect(result.consistent).toBe(false);
+
+    const persisted = await wallets.findById(wallet.walletId);
+    expect(persisted.balance).toBe("95.00");
+  });
+
+  test("reconciliação de carteira inexistente retorna NotFoundException", async () => {
+    await expect(
+      wallets.reconcile(randomUUID()),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
