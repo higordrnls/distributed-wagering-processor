@@ -3,6 +3,8 @@ import { randomUUID, createHash } from "node:crypto";
 import { Pool } from "pg";
 import {
   SQSClient,
+  CreateQueueCommand,
+  DeleteQueueCommand,
   SendMessageCommand,
   ReceiveMessageCommand,
   ChangeMessageVisibilityCommand,
@@ -12,8 +14,7 @@ import { createTestOrm } from "./test-db";
 import { WagerTransactionService } from "../api/wager-transaction.service";
 import { canonicalJson } from "../domain/payload-hash";
 
-const queueUrl =
-  "http://localhost:4566/000000000000/wager-redelivery-test.fifo";
+let queueUrl: string;
 
 const consumerName = "wager-transaction-consumer-v1";
 
@@ -42,10 +43,26 @@ beforeAll(async () => {
     },
   });
 
+  const queue = await sqs.send(
+    new CreateQueueCommand({
+      QueueName: `wager-redelivery-${randomUUID()}.fifo`,
+      Attributes: {
+        FifoQueue: "true",
+        ContentBasedDeduplication: "false",
+      },
+    }),
+  );
+
+  if (!queue.QueueUrl) throw new Error("Fila de redelivery não criada");
+  queueUrl = queue.QueueUrl;
+
   service = new WagerTransactionService(pool);
 });
 
 afterAll(async () => {
+  if (queueUrl && sqs) {
+    await sqs.send(new DeleteQueueCommand({ QueueUrl: queueUrl }));
+  }
   await pool?.end();
   sqs?.destroy();
 });
