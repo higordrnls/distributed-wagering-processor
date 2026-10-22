@@ -90,8 +90,7 @@ ao longo do processamento e da publicação de eventos.
 
 ## Validação
 
-Na última execução local, a suíte apresentou **148 testes aprovados,
-0 falhas, em 30 arquivos**, com **578 verificações**.
+Na última execução local reportada, a suíte apresentou **162 testes aprovados e 0 falhas**. A contagem pode variar conforme os testes adicionados; execute `bun test` para reproduzir a validação no ambiente local.
 
 A suíte inclui testes de concorrência entre processos Bun, bloqueio
 pessimista e Unit of Work pelo MikroORM, idempotência, reentrega de
