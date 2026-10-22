@@ -90,16 +90,19 @@ ao longo do processamento e da publicação de eventos.
 
 ## Validação
 
-Na última execução local, a suíte apresentou **148 testes aprovados,
-0 falhas, em 30 arquivos**, com **578 verificações**.
-
-A suíte inclui testes de concorrência entre processos Bun, bloqueio
-pessimista e Unit of Work pelo MikroORM, idempotência, reentrega de
-mensagens SQS e rollback de operações financeiras.
+Execute `bun test` e `bun run typecheck` para verificar o projeto.
+A suíte cobre regras financeiras, idempotência, concorrência entre
+processos, integração com PostgreSQL e SQS, redelivery, DLQ,
+shutdown gracioso, renovação de visibilidade e recuperação do outbox.
 
 Os testes de integração utilizam PostgreSQL e SQS em containers,
 não apenas mocks.
 
 ## Encerrar
 Ctrl+C nos processos Bun e `docker compose down` (evite `-v` para preservar os dados).
-\n\n## Benchmark de carga\n\nOs resultados locais, a metodologia e as limitações estão em [docs/LOAD_TEST.md](docs/LOAD_TEST.md). Eles não representam capacidade de produção.\n
+
+## Benchmark de carga
+
+Os resultados locais, a metodologia e as limitações estão em
+[docs/LOAD_TEST.md](docs/LOAD_TEST.md).
+Eles não representam capacidade de produção.
