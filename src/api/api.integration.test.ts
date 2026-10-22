@@ -5,6 +5,7 @@ import { Pool } from "pg";
 import { createTestOrm } from "../infra/test-db";
 import { WalletService } from "./wallet.service";
 import { WagerTransactionService } from "./wager-transaction.service";
+import { MetricsService } from "./metrics.service";
 
 let pool: Pool;
 let wallets: WalletService;
@@ -95,26 +96,34 @@ describe("API — consultas e reconciliação", () => {
     expect(result.consistent).toBe(true);
   });
 
-  test("reconciliação detecta divergência sem alterar o saldo", async () => {
-    const wallet = await wallets.create({
+  test("reconciliação detecta divergência, incrementa métrica e não altera o saldo", async () => {
+    const metrics = new MetricsService();
+    const instrumentedWallets = new WalletService(pool, metrics);
+
+    const wallet = await instrumentedWallets.create({
       playerId: randomUUID(),
       initialBalance: { amount: "100.00", currency: "BRL" },
     });
 
-    // Corrupção simulada exclusivamente no banco de testes.
     await pool.query(
       "UPDATE wallets SET balance = 95.00 WHERE id = $1",
       [wallet.walletId],
     );
 
-    const result = await wallets.reconcile(wallet.walletId);
+    const before = await metrics.render();
+    expect(before).toContain("wager_reconciliation_mismatches_total 0");
+
+    const result = await instrumentedWallets.reconcile(wallet.walletId);
 
     expect(result.storedBalance).toEqual({ amount: "95.00", currency: "BRL" });
     expect(result.calculatedBalance).toEqual({ amount: "100.00", currency: "BRL" });
     expect(result.difference).toEqual({ amount: "-5.00", currency: "BRL" });
     expect(result.consistent).toBe(false);
 
-    const persisted = await wallets.findById(wallet.walletId);
+    const after = await metrics.render();
+    expect(after).toContain("wager_reconciliation_mismatches_total 1");
+
+    const persisted = await instrumentedWallets.findById(wallet.walletId);
     expect(persisted.balance).toBe("95.00");
   });
 

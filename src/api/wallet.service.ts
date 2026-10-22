@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Optional,
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID, createHash } from "node:crypto";
@@ -11,11 +12,13 @@ import { Wallet } from "../domain/wallet";
 import { Money } from "../domain/money";
 import { WagerTransactionKind } from "../domain/wager-transaction";
 import { DATABASE_POOL } from "./database.provider";
+import { MetricsService } from "./metrics.service";
 
 @Injectable()
 export class WalletService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Optional() private readonly metrics?: MetricsService,
   ) {}
 
   async create(input: {
@@ -266,6 +269,8 @@ export class WalletService {
     const consistent = Number(difference) === 0;
 
     if (!consistent) {
+      this.metrics?.reconciliationMismatches.inc();
+
       console.warn(JSON.stringify({
         level: "warn",
         event: "wallet_reconciliation_mismatch",
