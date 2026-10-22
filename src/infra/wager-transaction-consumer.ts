@@ -119,7 +119,7 @@ export class WagerTransactionConsumer
         .update(canonicalJson(envelope))
         .digest("hex");
 
-      await this.service.submit(
+      const result = await this.service.submit(
         envelope.data,
         envelope.data.idempotencyKey,
         {
@@ -134,21 +134,39 @@ export class WagerTransactionConsumer
       );
 
       await this.ack(message);
-      this.logger.log(`Mensagem processada: ${envelope.messageId}`);
+      this.logger.log({
+        event: "sqs_message_processed",
+        messageId: envelope.messageId,
+        correlationId:
+          typeof envelope.correlationId === "string" &&
+          envelope.correlationId.trim()
+            ? envelope.correlationId.trim()
+            : envelope.messageId,
+        transactionId: result.body.transactionId,
+        status: result.body.status,
+        idempotentReplay: result.body.idempotentReplay,
+      });
     } catch (error) {
       const disposition = classifySqsError(error);
 
       if (disposition === "ACK") {
-        this.logger.warn(`Conflito de negócio confirmado: ${message.MessageId}`);
+        this.logger.warn({
+          event: "sqs_business_conflict",
+          sqsMessageId: message.MessageId,
+          disposition: "ACK",
+        });
         await this.ack(message);
         return;
       }
 
       if (disposition === "DLQ") {
         this.metrics?.dlqCandidates.inc();
-        this.logger.warn(
-          `Erro permanente; aguardando redrive para DLQ: ${message.MessageId}`,
-        );
+        this.logger.warn({
+          event: "sqs_permanent_failure",
+          sqsMessageId: message.MessageId,
+          disposition: "DLQ",
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
         return;
       }
 
@@ -163,10 +181,14 @@ export class WagerTransactionConsumer
 
       this.metrics?.sqsRetries.inc();
 
-      this.logger.error(
-        `Falha transitória; retry em ${backoffSeconds}s: ${message.MessageId}`,
-        error,
-      );
+      this.logger.error({
+        event: "sqs_retry_scheduled",
+        sqsMessageId: message.MessageId,
+        disposition: "RETRY",
+        receiveCount,
+        backoffSeconds,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
 
       await this.sqs.send(
         new ChangeMessageVisibilityCommand({
