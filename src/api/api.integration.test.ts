@@ -81,6 +81,52 @@ describe("API — consultas e reconciliação", () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  test("aposta com carteira inexistente retorna 404 sem persistir dados financeiros", async () => {
+    const walletId = randomUUID();
+    const playerId = randomUUID();
+    const externalId = randomUUID();
+    const providerId = `missing-wallet-${randomUUID()}`;
+
+    const request = {
+      providerId,
+      externalTransactionId: externalId,
+      playerId,
+      walletId,
+      roundId: randomUUID(),
+      gameId: "missing-wallet-test",
+      kind: "BET",
+      money: { amount: "10.00", currency: "BRL" },
+    };
+
+    await expect(
+      transactions.submit(request, randomUUID()),
+    ).rejects.toMatchObject({
+      status: 404,
+    });
+
+    const persisted = await pool.query(
+      `SELECT id FROM wager_transactions
+       WHERE provider_id = $1 AND external_transaction_id = $2`,
+      [providerId, externalId],
+    );
+    const ledger = await pool.query(
+      "SELECT id FROM wallet_ledger_entries WHERE wallet_id = $1",
+      [walletId],
+    );
+    const outbox = await pool.query(
+      `SELECT id FROM outbox_messages
+       WHERE aggregate_id IN (
+         SELECT id::text FROM wager_transactions
+         WHERE provider_id = $1 AND external_transaction_id = $2
+       )`,
+      [providerId, externalId],
+    );
+
+    expect(persisted.rows).toHaveLength(0);
+    expect(ledger.rows).toHaveLength(0);
+    expect(outbox.rows).toHaveLength(0);
+  });
+
   test("reconciliação confirma saldo consistente", async () => {
     const wallet = await wallets.create({
       playerId: randomUUID(),

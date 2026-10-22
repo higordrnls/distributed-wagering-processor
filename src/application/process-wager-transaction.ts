@@ -57,10 +57,14 @@ export class ProcessWagerTransaction {
 
       // Serializa operações financeiras da mesma carteira antes
       // de inserir transações ou registros de inbox.
-      await client.query(
+      const lockedWallet = await client.query(
         "SELECT id FROM wallets WHERE id = $1 FOR UPDATE",
         [transaction.walletId],
       );
+
+      if (lockedWallet.rowCount === 0) {
+        throw new Error("Wallet não encontrada");
+      }
 
       if (inbox) {
         const received = await client.query(
