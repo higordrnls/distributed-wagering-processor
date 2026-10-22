@@ -191,6 +191,8 @@ export class WagerTransactionConsumer
             ? envelope.correlationId.trim()
             : envelope.messageId,
         transactionId: result.body.transactionId,
+        providerId: envelope.data.providerId,
+        walletId: envelope.data.walletId,
         status: result.body.status,
         idempotentReplay: result.body.idempotentReplay,
       });

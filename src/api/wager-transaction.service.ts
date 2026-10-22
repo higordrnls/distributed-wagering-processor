@@ -290,6 +290,7 @@ export class WagerTransactionService {
       correlationId,
       transactionId: result.transactionId,
       walletId: transaction.walletId,
+      providerId: transaction.providerId,
       status: result.status,
       idempotentReplay: result.idempotentReplay,
     });
