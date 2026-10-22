@@ -51,5 +51,48 @@ Os testes de integração usam PostgreSQL e SQS reais. O banco isolado `wager_te
 | GET | /providers/:providerId/wagering/transactions/:externalTransactionId |
 | GET | /health/live, /health/ready, /metrics |
 
+## Exemplo rápido de uso
+
+Com a API em execução, crie uma carteira:
+
+```bash
+curl -X POST http://localhost:3000/wallets \
+  -H "Content-Type: application/json" \
+  -d '{"playerId":"player-demo","initialBalance":{"amount":"1000.00","currency":"BRL"}}'
+```
+
+Copie o `walletId` retornado e utilize-o para enviar uma aposta:
+
+```bash
+curl -X POST http://localhost:3000/wagering/transactions \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: demo-bet-001" \
+  -H "X-Correlation-Id: demo-flow-001" \
+  -d '{
+    "providerId":"provider-demo",
+    "externalTransactionId":"bet-demo-001",
+    "playerId":"player-demo",
+    "walletId":"SUBSTITUA_PELO_WALLET_ID",
+    "roundId":"round-demo-001",
+    "gameId":"game-demo-001",
+    "kind":"BET",
+    "money":{"amount":"100.00","currency":"BRL"}
+  }'
+```
+
+Resultado esperado: `PROCESSED`, com saldo de `900.00 BRL`.
+
+Repetir a mesma requisição com a mesma chave de idempotência retorna
+`idempotentReplay: true`, sem gerar outro débito.
+
+O header `X-Correlation-Id` é opcional e permite correlacionar a operação
+ao longo do processamento e da publicação de eventos.
+
+## Validação
+
+Na última execução local, a suíte apresentou **124 testes aprovados,
+0 falhas, em 21 arquivos**. Os testes de integração utilizam PostgreSQL
+e SQS em containers, não apenas mocks.
+
 ## Encerrar
 Ctrl+C nos processos Bun e `docker compose down` (evite `-v` para preservar os dados).
