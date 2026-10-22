@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { Logger } from "@nestjs/common";
+import { StructuredLogger } from "../structured-logger";
 import { Pool } from "pg";
 import {
   SQSClient,
@@ -7,6 +9,9 @@ import {
 } from "@aws-sdk/client-sqs";
 import { WagerTransactionService } from "../../api/wager-transaction.service";
 import { canonicalJson } from "../../domain/payload-hash";
+
+// Mantém logs no stderr; stdout é reservado ao JSON de resultado.
+Logger.overrideLogger(new StructuredLogger());
 
 const [mode, queueUrl] = process.argv.slice(2);
 

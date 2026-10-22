@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
@@ -24,6 +25,7 @@ import { Optional } from "@nestjs/common";
 
 @Injectable()
 export class WagerTransactionService {
+  private readonly logger = new Logger(WagerTransactionService.name);
   private readonly processor: ProcessWagerTransaction;
 
   constructor(
@@ -228,6 +230,12 @@ export class WagerTransactionService {
     }
 
     if (result.conflict) {
+      this.logger.warn({
+        event: "wager_idempotency_conflict",
+        correlationId,
+        transactionId: transaction.id,
+        walletId: transaction.walletId,
+      });
       throw new ConflictException({
         code: "IDEMPOTENCY_CONFLICT",
         message:
@@ -240,6 +248,15 @@ export class WagerTransactionService {
     } else {
       this.metrics?.transactions.inc({ status: result.status });
     }
+
+    this.logger.log({
+      event: "wager_processed",
+      correlationId,
+      transactionId: result.transactionId,
+      walletId: transaction.walletId,
+      status: result.status,
+      idempotentReplay: result.idempotentReplay,
+    });
 
     let balance = result.observedBalance;
     if (balance === undefined) {
