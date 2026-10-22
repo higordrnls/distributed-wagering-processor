@@ -189,5 +189,6 @@ Para produção, a implementação seria substituída por uma integração com u
   `INFRASTRUCTURE_UNAVAILABLE`. Erros não classificados permanecem HTTP 500.
 - **Testes:** existem testes com PostgreSQL e SQS reais, concorrência
   multiprocesso, redelivery, DLQ, crash antes do ACK e shutdown.
-  Ainda é necessário validar especificamente a consistência após
-  reiniciar a aplicação.
+  A recuperação após reinicialização real da aplicação também foi validada:
+  saldo, ledger, estado da transação e idempotência permanecem consistentes
+  entre processos, com encerramento do pool PostgreSQL testado.
