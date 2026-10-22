@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient } from "pg";
+import { Pool } from "pg";
+import type { QueryResult } from "pg";
 import type { MikroORM } from "@mikro-orm/postgresql";
 import { computePayloadHash } from "../domain/payload-hash";
 import { processWager } from "../domain/process-wager";
@@ -11,6 +12,14 @@ import {
 } from "../domain/wager-transaction";
 import { Wallet } from "../domain/wallet";
 import { selectWagerEvents } from "./wager-event-types";
+import { OrmTransactionQuery } from "../infra/orm-transaction-query";
+
+type TransactionQuery = {
+  query(
+    sql: string,
+    params?: any[],
+  ): Promise<QueryResult<any>>;
+};
 
 type DbRow = Record<string, any>;
 
@@ -49,15 +58,51 @@ export class ProcessWagerTransaction {
     private readonly orm?: MikroORM,
   ) {}
 
+  private async withOrmTransaction<T>(
+    operation: (db: OrmTransactionQuery) => Promise<T>,
+  ): Promise<T> {
+    if (!this.orm) {
+      throw new Error("MikroORM não configurado");
+    }
+
+    return this.orm.em.fork().transactional(async (em) => {
+      const db = new OrmTransactionQuery(em);
+      return operation(db);
+    });
+  }
+
   async execute(
     transaction: WagerTransaction,
     inbox?: InboxContext,
     correlationId: string = randomUUID(),
   ) {
-    const client = await this.pool.connect();
+    if (this.orm) {
+      return this.withOrmTransaction((db) =>
+        this.executeWithClient(transaction, inbox, correlationId, db, true),
+      );
+    }
 
+    const client = await this.pool.connect();
     try {
-      await client.query("BEGIN");
+      return await this.executeWithClient(
+        transaction, inbox, correlationId, client, false,
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  private async executeWithClient(
+    transaction: WagerTransaction,
+    inbox: InboxContext | undefined,
+    correlationId: string,
+    client: TransactionQuery,
+    ormManaged: boolean,
+  ) {
+    try {
+      if (!ormManaged) {
+        await client.query("BEGIN");
+      }
 
       // Serializa operações financeiras da mesma carteira antes
       // de inserir transações ou registros de inbox.
@@ -108,7 +153,7 @@ export class ProcessWagerTransaction {
 
             const existing = previous.rows[0];
 
-            await client.query("COMMIT");
+            if (!ormManaged) await client.query("COMMIT");
 
             return {
               conflict: false as const,
@@ -186,7 +231,7 @@ export class ProcessWagerTransaction {
               [inbox.consumerName, inbox.messageId],
             );
           }
-          await client.query("COMMIT");
+          if (!ormManaged) await client.query("COMMIT");
           return { conflict: true as const };
         }
 
@@ -197,7 +242,7 @@ export class ProcessWagerTransaction {
             [inbox.consumerName, inbox.messageId],
           );
         }
-        await client.query("COMMIT");
+        if (!ormManaged) await client.query("COMMIT");
         return {
           conflict: false as const,
           idempotentReplay: true,
@@ -381,7 +426,7 @@ export class ProcessWagerTransaction {
         );
       }
 
-      await client.query("COMMIT");
+      if (!ormManaged) await client.query("COMMIT");
 
       return {
         conflict: false as const,
@@ -392,10 +437,8 @@ export class ProcessWagerTransaction {
         observedBalance: wallet.balance.toString(),
       };
     } catch (error) {
-      await client.query("ROLLBACK");
+      if (!ormManaged) await client.query("ROLLBACK");
       throw error;
-    } finally {
-      client.release();
     }
   }
 }
