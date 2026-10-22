@@ -94,4 +94,73 @@ describe("ProcessWagerTransaction — MikroORM", () => {
 
     expect(ledger.rowCount).toBe(1);
   });
+
+  test("serializa duas apostas concorrentes na mesma carteira", async () => {
+    const walletId = randomUUID();
+    const playerId = randomUUID();
+
+    await orm.em.fork().insert(WalletEntity, {
+      id: walletId,
+      playerId,
+      currency: "BRL",
+      balance: "100.00",
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    function createBet() {
+      const externalId = randomUUID();
+      const fields = {
+        providerId: "orm-concurrency-test",
+        externalTransactionId: externalId,
+        playerId,
+        walletId,
+        roundId: "round-concurrent",
+        gameId: "game-concurrent",
+        kind: WagerTransactionKind.Bet,
+        money: Money.from({
+          amount: "80.00",
+          currency: "BRL",
+        }),
+        referenceExternalTransactionId: undefined,
+      };
+
+      return WagerTransaction.create({
+        id: randomUUID(),
+        ...fields,
+        idempotencyKey: externalId,
+        payloadHash: computePayloadHash(fields),
+        createdAt: new Date(),
+      });
+    }
+
+    const first = createBet();
+    const second = createBet();
+    const processor = new ProcessWagerTransaction(pool, orm);
+
+    const results = await Promise.all([
+      processor.execute(first),
+      processor.execute(second),
+    ]);
+
+    expect(results.filter((r) => r.status === "PROCESSED")).toHaveLength(1);
+    expect(results.filter((r) => r.status !== "PROCESSED")).toHaveLength(1);
+
+    const wallet = await orm.em.fork().findOneOrFail(
+      WalletEntity,
+      { id: walletId },
+    );
+
+    expect(wallet.balance).toBe("20.00");
+    expect(wallet.version).toBe(2);
+
+    const ledger = await pool.query(
+      "SELECT * FROM wallet_ledger_entries WHERE wallet_id = $1",
+      [walletId],
+    );
+
+    expect(ledger.rowCount).toBe(1);
+  });
+
 });

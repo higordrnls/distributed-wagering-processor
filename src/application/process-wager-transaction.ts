@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import type { QueryResult } from "pg";
-import type { MikroORM } from "@mikro-orm/postgresql";
+import type { EntityManager, MikroORM } from "@mikro-orm/postgresql";
 import { computePayloadHash } from "../domain/payload-hash";
 import { processWager } from "../domain/process-wager";
 import { Money } from "../domain/money";
@@ -13,6 +13,8 @@ import {
 import { Wallet } from "../domain/wallet";
 import { selectWagerEvents } from "./wager-event-types";
 import { OrmTransactionQuery } from "../infra/orm-transaction-query";
+import { LockMode } from "@mikro-orm/core";
+import { WalletEntity } from "../infra/entities/wallet.entity";
 
 type TransactionQuery = {
   query(
@@ -59,7 +61,10 @@ export class ProcessWagerTransaction {
   ) {}
 
   private async withOrmTransaction<T>(
-    operation: (db: OrmTransactionQuery) => Promise<T>,
+    operation: (
+      db: OrmTransactionQuery,
+      em: EntityManager,
+    ) => Promise<T>,
   ): Promise<T> {
     if (!this.orm) {
       throw new Error("MikroORM não configurado");
@@ -67,7 +72,7 @@ export class ProcessWagerTransaction {
 
     return this.orm.em.fork().transactional(async (em) => {
       const db = new OrmTransactionQuery(em);
-      return operation(db);
+      return operation(db, em);
     });
   }
 
@@ -77,8 +82,15 @@ export class ProcessWagerTransaction {
     correlationId: string = randomUUID(),
   ) {
     if (this.orm) {
-      return this.withOrmTransaction((db) =>
-        this.executeWithClient(transaction, inbox, correlationId, db, true),
+      return this.withOrmTransaction((db, em) =>
+        this.executeWithClient(
+          transaction,
+          inbox,
+          correlationId,
+          db,
+          true,
+          em,
+        ),
       );
     }
 
@@ -98,6 +110,7 @@ export class ProcessWagerTransaction {
     correlationId: string,
     client: TransactionQuery,
     ormManaged: boolean,
+    em?: EntityManager,
   ) {
     try {
       if (!ormManaged) {
@@ -106,13 +119,25 @@ export class ProcessWagerTransaction {
 
       // Serializa operações financeiras da mesma carteira antes
       // de inserir transações ou registros de inbox.
-      const lockedWallet = await client.query(
-        "SELECT id FROM wallets WHERE id = $1 FOR UPDATE",
-        [transaction.walletId],
-      );
+      if (em) {
+        const lockedWallet = await em.findOne(
+          WalletEntity,
+          { id: transaction.walletId },
+          { lockMode: LockMode.PESSIMISTIC_WRITE },
+        );
 
-      if (lockedWallet.rowCount === 0) {
-        throw new Error("Wallet não encontrada");
+        if (!lockedWallet) {
+          throw new Error("Wallet não encontrada");
+        }
+      } else {
+        const lockedWallet = await client.query(
+          "SELECT id FROM wallets WHERE id = $1 FOR UPDATE",
+          [transaction.walletId],
+        );
+
+        if (lockedWallet.rowCount === 0) {
+          throw new Error("Wallet não encontrada");
+      }
       }
 
       if (inbox) {
@@ -319,17 +344,35 @@ export class ProcessWagerTransaction {
       });
 
       if (wallet.version !== previousVersion) {
-        await client.query(
-          `UPDATE wallets
-           SET balance = $1, version = $2, updated_at = $3
-           WHERE id = $4`,
-          [
-            wallet.balance.toString(),
-            wallet.version,
-            wallet.updatedAt,
-            wallet.id,
-          ],
-        );
+        if (em) {
+          const managedWallet = em.getUnitOfWork()
+            .getById<WalletEntity>(
+              WalletEntity.name,
+              wallet.id,
+            );
+
+          if (!managedWallet) {
+            throw new Error("Carteira não encontrada no Identity Map");
+          }
+
+          managedWallet.balance = wallet.balance.toString();
+          managedWallet.version = wallet.version;
+          managedWallet.updatedAt = wallet.updatedAt;
+
+          await em.flush();
+        } else {
+          await client.query(
+            `UPDATE wallets
+             SET balance = $1, version = $2, updated_at = $3
+             WHERE id = $4`,
+            [
+              wallet.balance.toString(),
+              wallet.version,
+              wallet.updatedAt,
+              wallet.id,
+            ],
+          );
+        }
       }
 
       if (entry) {
