@@ -158,9 +158,18 @@ persistido com o calculado pelo ledger; divergências são logadas, contadas e s
 corrigidas em silêncio**.
 
 ## 7. Autenticação
-Fora do escopo de pontuação (seção 2 do enunciado). Não há autenticação implementada. O desenho
-que eu adotaria: um IdP externo (Keycloak ou Zitadel) emitindo JWT, validado por um `AuthGuard`
-global no Nest, com os endpoints de health abertos e a fila tratada como canal interno confiável.
+
+A autenticação não foi implementada, conforme permitido pela seção 2 do desafio, pois não integra a pontuação funcional.
+
+O código contém um ponto de extensão explícito em `src/api/provider-identity.port.ts`:
+
+- `ProviderIdentityPort` define o contrato `assertProviderAccess(providerId)`.
+- `UnauthenticatedProviderIdentity` é uma implementação **no-op**, registrada no `AppModule`.
+- Os controllers de submissão e consulta por identificador externo invocam esse contrato antes de delegar ao serviço.
+
+**Importante:** a implementação atual não autentica nem autoriza requisições. Os endpoints permanecem públicos; o contrato existe apenas como ponto de integração.
+
+Para produção, a implementação seria substituída por uma integração com um Identity Provider externo (Keycloak ou Zitadel), validando JWTs e verificando se o provedor autenticado corresponde ao `providerId` solicitado. Um guard global protegeria os endpoints de negócio, mantendo `/health/live` e `/health/ready` públicos. Mensagens SQS continuariam sendo tratadas como canal interno confiável, com validações de domínio preservadas.
 
 ## 8. Limitações e pendências conhecidas
 

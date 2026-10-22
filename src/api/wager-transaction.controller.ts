@@ -9,11 +9,13 @@ import {
 } from "@nestjs/common";
 
 import { WagerTransactionService } from "./wager-transaction.service";
+import { ProviderIdentityPort } from "./provider-identity.port";
 
 @Controller("wagering/transactions")
 export class WagerTransactionController {
   constructor(
     private readonly wagerTransactionService: WagerTransactionService,
+    private readonly providerIdentity: ProviderIdentityPort,
   ) {}
 
   @Get(":transactionId")
@@ -29,6 +31,13 @@ export class WagerTransactionController {
     @Res({ passthrough: true })
     response: { status: (code: number) => unknown },
   ) {
+    if (body && typeof body === "object" && !Array.isArray(body)) {
+      const providerId = (body as Record<string, unknown>).providerId;
+      if (typeof providerId === "string" && providerId.trim()) {
+        await this.providerIdentity.assertProviderAccess(providerId);
+      }
+    }
+
     const result = await this.wagerTransactionService.submit(
       body,
       idempotencyKey,
