@@ -58,8 +58,12 @@ export class WagerTransactionConsumer
 
   async onModuleDestroy() {
     this.stopping = true;
-    await this.loop;
-    this.sqs.destroy();
+
+    try {
+      await this.loop;
+    } finally {
+      this.sqs.destroy();
+    }
   }
 
   private async poll(): Promise<void> {
@@ -76,7 +80,19 @@ export class WagerTransactionConsumer
         );
 
         for (const message of response.Messages ?? []) {
-          if (this.stopping) break;
+          if (this.stopping) {
+            if (message.ReceiptHandle) {
+              await this.sqs.send(
+                new ChangeMessageVisibilityCommand({
+                  QueueUrl: this.queueUrl,
+                  ReceiptHandle: message.ReceiptHandle,
+                  VisibilityTimeout: 0,
+                }),
+              );
+            }
+            continue;
+          }
+
           await this.handle(message);
         }
       } catch (error) {
@@ -88,6 +104,37 @@ export class WagerTransactionConsumer
 
   private async handle(message: Message): Promise<void> {
     if (!message.Body || !message.ReceiptHandle) return;
+
+    // Renova a visibilidade enquanto a operação estiver em andamento.
+    // Evita redelivery concorrente durante processamentos demorados.
+    let renewalInFlight: Promise<void> | undefined;
+
+    const renewVisibility = () => {
+      if (renewalInFlight) return;
+
+      renewalInFlight = this.sqs
+        .send(
+          new ChangeMessageVisibilityCommand({
+            QueueUrl: this.queueUrl,
+            ReceiptHandle: message.ReceiptHandle!,
+            VisibilityTimeout: 30,
+          }),
+        )
+        .then(() => {})
+        .catch((error: unknown) => {
+          this.logger.error("Falha ao renovar visibilidade SQS", error);
+        })
+        .finally(() => {
+          renewalInFlight = undefined;
+        });
+    };
+
+    const renewalTimer = setInterval(renewVisibility, 10000);
+
+    const stopRenewal = async (): Promise<void> => {
+      clearInterval(renewalTimer);
+      await renewalInFlight;
+    };
 
     try {
       const parsed: unknown = JSON.parse(message.Body);
@@ -133,6 +180,7 @@ export class WagerTransactionConsumer
           : envelope.messageId,
       );
 
+      await stopRenewal();
       await this.ack(message);
       this.logger.log({
         event: "sqs_message_processed",
@@ -147,6 +195,7 @@ export class WagerTransactionConsumer
         idempotentReplay: result.body.idempotentReplay,
       });
     } catch (error) {
+      await stopRenewal();
       const disposition = classifySqsError(error);
 
       if (disposition === "ACK") {
@@ -197,6 +246,8 @@ export class WagerTransactionConsumer
           VisibilityTimeout: backoffSeconds,
         }),
       );
+    } finally {
+      await stopRenewal();
     }
   }
 
