@@ -93,7 +93,9 @@ ao longo do processamento e da publicação de eventos.
 Execute `bun test` e `bun run typecheck` para verificar o projeto.
 A suíte cobre regras financeiras, idempotência, concorrência entre
 processos, integração com PostgreSQL e SQS, redelivery, DLQ,
-shutdown gracioso, renovação de visibilidade e recuperação do outbox.
+shutdown gracioso, renovação de visibilidade, recuperação do outbox
+e reinicialização real da aplicação com preservação de saldo,
+ledger e idempotência.
 
 Os testes de integração utilizam PostgreSQL e SQS em containers,
 não apenas mocks.
