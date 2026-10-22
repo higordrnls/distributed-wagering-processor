@@ -9,6 +9,7 @@ import {
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { Wallet } from "../domain/wallet";
+import { DomainError } from "../domain/errors";
 import { Money } from "../domain/money";
 import { DATABASE_POOL } from "./database.provider";
 import { MetricsService } from "./metrics.service";
@@ -33,13 +34,25 @@ export class WalletService {
       typeof input?.initialBalance?.amount !== "string" ||
       typeof input?.initialBalance?.currency !== "string"
     ) {
-      throw new ConflictException("Dados da carteira inválidos");
+      throw new BadRequestException("Dados da carteira inválidos");
     }
 
-    const initialBalance = Money.from({
-      amount: input.initialBalance.amount,
-      currency: input.initialBalance.currency,
-    });
+    let initialBalance: Money;
+
+    try {
+      initialBalance = Money.from({
+        amount: input.initialBalance.amount,
+        currency: input.initialBalance.currency,
+      });
+    } catch (error) {
+      if (error instanceof DomainError) {
+        throw new BadRequestException({
+          code: error.code,
+          message: error.message,
+        });
+      }
+      throw error;
+    }
 
     const now = new Date();
     const walletId = randomUUID();

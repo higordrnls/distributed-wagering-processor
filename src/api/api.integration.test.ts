@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Pool } from "pg";
 import { createTestOrm } from "../infra/test-db";
 import { WalletService } from "./wallet.service";
@@ -185,5 +185,42 @@ describe("API — consultas e reconciliação", () => {
     await expect(
       wallets.reconcile(randomUUID()),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  test("dados inválidos na criação de carteira retornam erro 400", async () => {
+    await expect(
+      wallets.create({
+        playerId: " ",
+        initialBalance: { amount: "100.00", currency: "BRL" },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  test("valor inicial inválido retorna erro 400", async () => {
+    await expect(
+      wallets.create({
+        playerId: randomUUID(),
+        initialBalance: { amount: "invalido", currency: "BRL" },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  test("duplicidade de jogador e moeda retorna conflito 409", async () => {
+    const playerId = randomUUID();
+
+    const first = await wallets.create({
+      playerId,
+      initialBalance: { amount: "100.00", currency: "BRL" },
+    });
+
+    await expect(
+      wallets.create({
+        playerId,
+        initialBalance: { amount: "50.00", currency: "BRL" },
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const persisted = await wallets.findById(first.walletId);
+    expect(persisted.balance).toBe("100.00");
   });
 });
