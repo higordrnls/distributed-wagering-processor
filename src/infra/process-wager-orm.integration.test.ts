@@ -314,6 +314,79 @@ describe("ProcessWagerTransaction — MikroORM", () => {
   });
 
 
+  test("rejeita identificador externo repetido com outra chave e payload", async () => {
+    const walletId = randomUUID();
+    const playerId = randomUUID();
+    const externalId = randomUUID();
+
+    await orm.em.fork().insert(WalletEntity, {
+      id: walletId,
+      playerId,
+      currency: "BRL",
+      balance: "100.00",
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    function createBet(amount: string, idempotencyKey: string) {
+      const fields = {
+        providerId: "orm-external-id-conflict",
+        externalTransactionId: externalId,
+        playerId,
+        walletId,
+        roundId: "round-external-conflict",
+        gameId: "game-external-conflict",
+        kind: WagerTransactionKind.Bet,
+        money: Money.from({ amount, currency: "BRL" }),
+        referenceExternalTransactionId: undefined,
+      };
+
+      return WagerTransaction.create({
+        id: randomUUID(),
+        ...fields,
+        idempotencyKey,
+        payloadHash: computePayloadHash(fields),
+        createdAt: new Date(),
+      });
+    }
+
+    const processor = new ProcessWagerTransaction(pool, orm);
+
+    const first = await processor.execute(
+      createBet("30.00", randomUUID()),
+    );
+
+    const second = await processor.execute(
+      createBet("50.00", randomUUID()),
+    );
+
+    expect(first.status).toBe("PROCESSED");
+    expect(second.conflict).toBe(true);
+
+    const wallet = await orm.em.fork().findOneOrFail(
+      WalletEntity,
+      { id: walletId },
+    );
+
+    expect(wallet.balance).toBe("70.00");
+    expect(wallet.version).toBe(2);
+
+    const ledger = await pool.query(
+      "SELECT id FROM wallet_ledger_entries WHERE wallet_id = $1",
+      [walletId],
+    );
+
+    const transactions = await pool.query(
+      `SELECT id FROM wager_transactions
+       WHERE provider_id = $1 AND external_transaction_id = $2`,
+      ["orm-external-id-conflict", externalId],
+    );
+
+    expect(ledger.rowCount).toBe(1);
+    expect(transactions.rowCount).toBe(1);
+  });
+
   test("desfaz saldo e mensagens quando o ledger falha", async () => {
     const walletId = randomUUID();
     const playerId = randomUUID();
