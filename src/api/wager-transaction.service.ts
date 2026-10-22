@@ -231,6 +231,30 @@ export class WagerTransactionService {
       const processor = await this.getProcessor();
       result = await processor.execute(transaction, inbox, correlationId);
     } catch (error) {
+      const pgCode =
+        error !== null &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : undefined;
+
+      if (
+        pgCode === "40P01" ||
+        pgCode === "55P03" ||
+        pgCode === "40001"
+      ) {
+        this.metrics?.lockConflicts.inc({ code: pgCode });
+
+        this.logger.warn({
+          event: "wager_database_concurrency_error",
+          correlationId,
+          transactionId: transaction.id,
+          walletId: transaction.walletId,
+          code: pgCode,
+        });
+      }
+
       if (error instanceof Error && error.message === "Wallet não encontrada") {
         throw new NotFoundException("Carteira não encontrada");
       }

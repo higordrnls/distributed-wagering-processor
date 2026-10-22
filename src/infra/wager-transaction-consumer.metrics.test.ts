@@ -211,7 +211,7 @@ describe("Métricas do consumer SQS", () => {
 
     await (consumer as any).handle(message);
 
-    const output = await metrics.render();
+    const output = await metrics.registry.metrics();
     expect(output).toContain("wager_sqs_dlq_candidates_total 1");
     expect(output).toContain("wager_sqs_retries_total 0");
 
@@ -247,7 +247,7 @@ describe("Métricas do consumer SQS", () => {
       // A chamada ao SQS de teste deve falhar; o contador é incrementado antes dela.
     }
 
-    const output = await metrics.render();
+    const output = await metrics.registry.metrics();
     expect(output).toContain("wager_sqs_retries_total 1");
     expect(output).toContain("wager_sqs_dlq_candidates_total 0");
 
