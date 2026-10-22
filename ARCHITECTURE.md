@@ -184,8 +184,9 @@ Para produção, a implementação seria substituída por uma integração com u
   se a coleta foi bem-sucedida.
 - **Autenticação:** não implementada, conforme a decisão documentada
   na seção 7. Os endpoints de negócio permanecem públicos.
-- **Tratamento de erros:** ainda falta verificar e padronizar o mapeamento
-  de falhas transitórias de infraestrutura para HTTP 503.
+- **Tratamento de erros:** falhas transitórias de infraestrutura
+  identificadas pelo filtro global retornam HTTP 503 com o código
+  `INFRASTRUCTURE_UNAVAILABLE`. Erros não classificados permanecem HTTP 500.
 - **Testes:** existem testes com PostgreSQL e SQS reais, concorrência
   multiprocesso, redelivery, DLQ, crash antes do ACK e shutdown.
   Ainda é necessário validar especificamente a consistência após
