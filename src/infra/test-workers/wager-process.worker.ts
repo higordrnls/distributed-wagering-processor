@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
+import { MikroORM } from "@mikro-orm/postgresql";
+import { ormOptions } from "../orm-config";
 import { ProcessWagerTransaction } from "../../application/process-wager-transaction";
 import { Money } from "../../domain/money";
 import { computePayloadHash } from "../../domain/payload-hash";
@@ -24,7 +26,11 @@ const pool = new Pool({
   max: 2,
 });
 
+let orm: MikroORM | undefined;
+
 try {
+  orm = await MikroORM.init(ormOptions("wager_test"));
+
   const money = Money.from({ amount, currency: "BRL" });
 
   const fields = {
@@ -47,7 +53,7 @@ try {
     createdAt: new Date(),
   });
 
-  const processor = new ProcessWagerTransaction(pool);
+  const processor = new ProcessWagerTransaction(pool, orm);
   const result = await processor.execute(transaction);
 
   console.log(JSON.stringify({
@@ -59,5 +65,8 @@ try {
   console.error(error);
   process.exitCode = 1;
 } finally {
+  if (orm) {
+    await orm.close(true);
+  }
   await pool.end();
 }
