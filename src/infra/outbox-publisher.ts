@@ -31,6 +31,8 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
 
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
+  private stopping = false;
+  private activeCycle?: Promise<void>;
 
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {
     this.sqs = new SQSClient({
@@ -44,22 +46,31 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit() {
-    void this.publishPending();
+    this.startCycle();
 
     this.timer = setInterval(() => {
-      void this.publishPending();
+      this.startCycle();
     }, Number(process.env.OUTBOX_POLL_INTERVAL_MS ?? 5000));
   }
 
-  onModuleDestroy() {
-    if (this.timer) clearInterval(this.timer);
+  async onModuleDestroy() {
+    this.stopping = true;
+
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+
+    await this.activeCycle;
     this.sqs.destroy();
   }
 
-  private async publishPending(): Promise<void> {
-    if (this.running) return;
+  private startCycle(): void {
+    if (this.stopping || this.running) return;
     this.running = true;
+    this.activeCycle = this.publishPending();
+  }
 
+  private async publishPending(): Promise<void> {
     try {
       const client = await this.pool.connect();
       let messages: OutboxRow[] = [];

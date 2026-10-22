@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -8,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import {
+  ChangeMessageVisibilityCommand,
   DeleteMessageCommand,
   ReceiveMessageCommand,
   SQSClient,
@@ -15,6 +15,7 @@ import {
 } from "@aws-sdk/client-sqs";
 import { WagerTransactionService } from "../api/wager-transaction.service";
 import { canonicalJson } from "../domain/payload-hash";
+import { classifySqsError } from "./sqs-error-classifier";
 
 type WagerEnvelope = {
   messageId: string;
@@ -61,7 +62,7 @@ export class WagerTransactionConsumer
         const response = await this.sqs.send(
           new ReceiveMessageCommand({
             QueueUrl: this.queueUrl,
-            MaxNumberOfMessages: 5,
+            MaxNumberOfMessages: 1,
             WaitTimeSeconds: 5,
             VisibilityTimeout: 30,
             MessageSystemAttributeNames: ["ApproximateReceiveCount"],
@@ -125,18 +126,41 @@ export class WagerTransactionConsumer
       await this.ack(message);
       this.logger.log(`Mensagem processada: ${envelope.messageId}`);
     } catch (error) {
-      if (
-        error instanceof BadRequestException ||
-        error instanceof ConflictException
-      ) {
-        this.logger.warn(`Mensagem inválida ou conflito: ${message.MessageId}`);
+      const disposition = classifySqsError(error);
+
+      if (disposition === "ACK") {
+        this.logger.warn(`Conflito de negócio confirmado: ${message.MessageId}`);
         await this.ack(message);
         return;
       }
 
+      if (disposition === "DLQ") {
+        this.logger.warn(
+          `Erro permanente; aguardando redrive para DLQ: ${message.MessageId}`,
+        );
+        return;
+      }
+
+      const receiveCount = Number(
+        message.Attributes?.ApproximateReceiveCount ?? "1",
+      );
+
+      const backoffSeconds = Math.min(
+        120,
+        5 * 2 ** Math.max(0, receiveCount - 1),
+      );
+
       this.logger.error(
-        `Falha transitória; SQS tentará novamente: ${message.MessageId}`,
+        `Falha transitória; retry em ${backoffSeconds}s: ${message.MessageId}`,
         error,
+      );
+
+      await this.sqs.send(
+        new ChangeMessageVisibilityCommand({
+          QueueUrl: this.queueUrl,
+          ReceiptHandle: message.ReceiptHandle!,
+          VisibilityTimeout: backoffSeconds,
+        }),
       );
     }
   }
