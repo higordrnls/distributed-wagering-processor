@@ -6,7 +6,10 @@
   "scripts": {
     "typecheck": "bun check",
     "start": "bun run src/main.ts",
-    "dev": "bun --watch src/main.ts"
+    "dev": "bun --watch src/main.ts",
+    "migrate": "bun run scripts/migrate.ts",
+    "test": "bun test",
+    "test:integration": "bun test src/infra"
   },
   "devDependencies": {
     "@types/bun": "latest",
