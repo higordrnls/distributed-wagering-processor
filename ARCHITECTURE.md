@@ -146,7 +146,7 @@ global no Nest, com os endpoints de health abertos e a fila tratada como canal i
 ## 8. Limitações e pendências conhecidas
 
 - **ORM:** MikroORM é utilizado nas migrations e no preparo dos testes. O caminho transacional de negócio utiliza SQL explícito com `pg`, conforme o desvio documentado na seção 2.4.
-- **Observabilidade:** há propagação de `correlationId` pelo fluxo HTTP, processamento, persistência, outbox e SQS. Isso não equivale à implementação completa de logs JSON estruturados.
+- **Observabilidade:** `StructuredLogger` emite logs JSON para stderr e está configurado como logger da aplicação NestJS. Serviços que usam `Logger` do NestJS passam pela implementação configurada. A cobertura de campos de contexto varia conforme o evento.
 - **Métricas:** ainda não há métricas específicas de conflitos de lock nem contagem direta de mensagens presentes na DLQ.
 - **Autenticação:** não há autenticação implementada; permanece fora do escopo funcional adotado, conforme a seção 7.
 - **Tratamento de erros:** o mapeamento explícito de todas as falhas transitórias de banco para HTTP 503 e o comportamento de submissões com wallet inexistente ainda precisam de verificação específica.

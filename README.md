@@ -96,3 +96,4 @@ e SQS em containers, não apenas mocks.
 
 ## Encerrar
 Ctrl+C nos processos Bun e `docker compose down` (evite `-v` para preservar os dados).
+\n\n## Benchmark de carga\n\nOs resultados locais, a metodologia e as limitações estão em [docs/LOAD_TEST.md](docs/LOAD_TEST.md). Eles não representam capacidade de produção.\n

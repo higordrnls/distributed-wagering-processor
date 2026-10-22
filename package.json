@@ -9,7 +9,8 @@
     "dev": "bun --watch src/main.ts",
     "migrate": "bun run scripts/migrate.ts",
     "test": "bun test",
-    "test:integration": "bun test src/infra"
+    "test:integration": "bun test src/infra",
+    "test:load": "bun run scripts/load-test.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
