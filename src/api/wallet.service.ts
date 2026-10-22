@@ -13,12 +13,15 @@ import { Money } from "../domain/money";
 import { WagerTransactionKind } from "../domain/wager-transaction";
 import { DATABASE_POOL } from "./database.provider";
 import { MetricsService } from "./metrics.service";
+import { OrmProvider } from "./orm.provider";
+import { createWalletTransaction } from "../infra/create-wallet-transaction";
 
 @Injectable()
 export class WalletService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     @Optional() private readonly metrics?: MetricsService,
+    @Optional() private readonly ormProvider?: OrmProvider,
   ) {}
 
   async create(input: {
@@ -52,6 +55,40 @@ export class WalletService {
       openingEntryId,
       openingTransactionId,
     });
+
+    if (this.ormProvider) {
+      try {
+        const orm = await this.ormProvider.getOrm();
+
+        await createWalletTransaction(
+          orm,
+          wallet,
+          openingEntry,
+          openingTransactionId,
+        );
+
+        return {
+          walletId: wallet.id,
+          playerId: wallet.playerId,
+          currency: wallet.currency,
+          balance: wallet.balance.toString(),
+          version: wallet.version,
+        };
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "23505"
+        ) {
+          throw new ConflictException(
+            "Já existe uma carteira para este jogador e moeda",
+          );
+        }
+
+        throw error;
+      }
+    }
 
     const client = await this.pool.connect();
 
