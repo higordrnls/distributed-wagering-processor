@@ -13,6 +13,12 @@ import { Pool } from "pg";
 import { DATABASE_POOL } from "../api/database.provider";
 import { Optional } from "@nestjs/common";
 import { MetricsService } from "../api/metrics.service";
+import {
+  WagerTransactionProcessed,
+  WagerTransactionRejected,
+  WagerTransactionPendingReference,
+  WalletBalanceChanged,
+} from "../domain/integration-event";
 
 type OutboxRow = {
   id: string;
@@ -120,14 +126,9 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
           await this.sqs.send(
             new SendMessageCommand({
               QueueUrl: this.queueUrl,
-              MessageBody: JSON.stringify({
-                eventId: message.id,
-                eventType: message.event_type,
-                aggregateId: message.aggregate_id,
-                correlationId: message.aggregate_id,
-                occurredAt: message.occurred_at,
-                data: message.payload,
-              }),
+              MessageBody: JSON.stringify(
+                this.serializeEvent(message),
+              ),
               MessageGroupId: message.aggregate_id,
               MessageDeduplicationId: message.id,
             }),
@@ -168,6 +169,34 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.running = false;
       await this.updateOutboxLag();
+    }
+  }
+
+  private serializeEvent(message: OutboxRow): Record<string, unknown> {
+    const props = {
+      eventId: message.id,
+      aggregateId: message.aggregate_id,
+      correlationId: message.aggregate_id,
+      occurredAt: message.occurred_at,
+      data: message.payload as Record<string, unknown>,
+    };
+
+    switch (message.event_type) {
+      case "WagerTransactionProcessed":
+        return WagerTransactionProcessed.from(props).toJSON();
+      case "WagerTransactionRejected":
+        return WagerTransactionRejected.from(props).toJSON();
+      case "WagerTransactionPendingReference":
+        return WagerTransactionPendingReference.from(props).toJSON();
+      case "WalletBalanceChanged":
+        return WalletBalanceChanged.from(props).toJSON();
+      default:
+        return {
+          ...props,
+          eventType: message.event_type,
+          occurredAt: message.occurred_at.toISOString(),
+          version: 1,
+        };
     }
   }
 

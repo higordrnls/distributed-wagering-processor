@@ -112,6 +112,12 @@ describe("Outbox — dois publishers concorrentes", () => {
         for (const message of response.Messages ?? []) {
           const event = JSON.parse(message.Body!);
           if (ids.includes(event.eventId)) {
+            expect(event.eventType).toBe("TestEvent");
+            expect(event.version).toBe(1);
+            expect(event.aggregateId).toBe(event.eventId);
+            expect(event.correlationId).toBe(event.aggregateId);
+            expect(event.occurredAt).toEqual(expect.any(String));
+            expect(event.data).toEqual({ testId: event.eventId });
             receivedIds.add(event.eventId);
           }
 
