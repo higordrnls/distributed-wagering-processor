@@ -79,30 +79,28 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
         await client.query("BEGIN");
 
         const result = await client.query<OutboxRow>(`
-          SELECT id, aggregate_id, event_type, payload,
-                 occurred_at, attempts
-          FROM outbox_messages
-          WHERE published_at IS NULL
-            AND (
-              next_attempt_at IS NULL
-              OR next_attempt_at <= NOW()
-            )
-          ORDER BY occurred_at
-          LIMIT 20
-          FOR UPDATE SKIP LOCKED
+          WITH available AS (
+            SELECT id
+            FROM outbox_messages
+            WHERE published_at IS NULL
+              AND (
+                next_attempt_at IS NULL
+                OR next_attempt_at <= NOW()
+              )
+            ORDER BY occurred_at
+            LIMIT 20
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE outbox_messages AS o
+          SET attempts = o.attempts + 1,
+              next_attempt_at = NOW() + INTERVAL '30 seconds'
+          FROM available
+          WHERE o.id = available.id
+          RETURNING o.id, o.aggregate_id, o.event_type,
+                    o.payload, o.occurred_at, o.attempts
         `);
 
         messages = result.rows;
-
-        for (const message of messages) {
-          await client.query(
-            `UPDATE outbox_messages
-             SET attempts = attempts + 1,
-                 next_attempt_at = NOW() + INTERVAL '30 seconds'
-             WHERE id = $1`,
-            [message.id],
-          );
-        }
 
         await client.query("COMMIT");
       } catch (error) {
