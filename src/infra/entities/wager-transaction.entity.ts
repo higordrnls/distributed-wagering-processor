@@ -17,6 +17,8 @@ export class WagerTransactionEntity {
   status!: string;
   referenceTransactionId?: string | null;
   failureCode?: string | null;
+  observedBalance?: string | null;
+  correlationId?: string | null;
   referenceAttempts!: number;
   nextReferenceAttemptAt?: Date | null;
   createdAt!: Date;
@@ -48,6 +50,18 @@ export const wagerTransactionSchema = new EntitySchema({
       type: "uuid", fieldName: "reference_transaction_id", nullable: true,
     },
     failureCode: { type: "string", fieldName: "failure_code", nullable: true },
+    observedBalance: {
+      type: "decimal",
+      precision: 18,
+      scale: 2,
+      fieldName: "observed_balance",
+      nullable: true,
+    },
+    correlationId: {
+      type: "string",
+      fieldName: "correlation_id",
+      nullable: true,
+    },
     referenceAttempts: {
       type: "integer", fieldName: "reference_attempts", default: 0,
     },
