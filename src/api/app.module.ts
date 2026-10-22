@@ -1,3 +1,5 @@
+import { MetricsService } from "./metrics.service";
+import { MetricsController } from "./metrics.controller";
 import { ProviderTransactionController } from "./provider-transaction.controller";
 import { Module } from "@nestjs/common";
 import { HealthController } from "./health.controller";
@@ -11,7 +13,7 @@ import { WagerTransactionConsumer } from "../infra/wager-transaction-consumer";
 import { PendingReferenceReconciler } from "../infra/pending-reference-reconciler";
 
 @Module({
-  controllers: [HealthController, WalletController, WagerTransactionController, ProviderTransactionController],
-  providers: [databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
+  controllers: [MetricsController, HealthController, WalletController, WagerTransactionController, ProviderTransactionController],
+  providers: [MetricsService, databasePoolProvider, WalletService, WagerTransactionService, OutboxPublisher, WagerTransactionConsumer, PendingReferenceReconciler],
 })
 export class AppModule {}

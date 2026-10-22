@@ -16,6 +16,8 @@ import {
 import { WagerTransactionService } from "../api/wager-transaction.service";
 import { canonicalJson } from "../domain/payload-hash";
 import { classifySqsError } from "./sqs-error-classifier";
+import { MetricsService } from "../api/metrics.service";
+import { Optional } from "@nestjs/common";
 
 type WagerEnvelope = {
   messageId: string;
@@ -44,7 +46,10 @@ export class WagerTransactionConsumer
   private stopping = false;
   private loop?: Promise<void>;
 
-  constructor(private readonly service: WagerTransactionService) {}
+  constructor(
+    private readonly service: WagerTransactionService,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {}
 
   onModuleInit() {
     this.loop = this.poll();
@@ -135,6 +140,7 @@ export class WagerTransactionConsumer
       }
 
       if (disposition === "DLQ") {
+        this.metrics?.dlqCandidates.inc();
         this.logger.warn(
           `Erro permanente; aguardando redrive para DLQ: ${message.MessageId}`,
         );
@@ -149,6 +155,8 @@ export class WagerTransactionConsumer
         120,
         5 * 2 ** Math.max(0, receiveCount - 1),
       );
+
+      this.metrics?.sqsRetries.inc();
 
       this.logger.error(
         `Falha transitória; retry em ${backoffSeconds}s: ${message.MessageId}`,

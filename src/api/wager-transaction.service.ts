@@ -19,12 +19,17 @@ import {
   WagerTransactionKind,
 } from "../domain/wager-transaction";
 import { DATABASE_POOL } from "./database.provider";
+import { MetricsService } from "./metrics.service";
+import { Optional } from "@nestjs/common";
 
 @Injectable()
 export class WagerTransactionService {
   private readonly processor: ProcessWagerTransaction;
 
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {
     this.processor = new ProcessWagerTransaction(pool);
   }
 
@@ -205,7 +210,12 @@ export class WagerTransactionService {
       throw error;
     }
 
-    const result = await this.processor.execute(transaction, inbox);
+    const startedAt = performance.now();
+    const result = await this.processor.execute(transaction, inbox).finally(() => {
+      this.metrics?.processingDuration.observe(
+        (performance.now() - startedAt) / 1000,
+      );
+    });
 
     if (result.conflict) {
       throw new ConflictException({
@@ -213,6 +223,12 @@ export class WagerTransactionService {
         message:
           "A chave de idempotência ou a transação externa já foi usada com outro payload",
       });
+    }
+
+    if (result.idempotentReplay) {
+      this.metrics?.replays.inc();
+    } else {
+      this.metrics?.transactions.inc({ status: result.status });
     }
 
     let balance = result.observedBalance;
