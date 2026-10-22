@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -147,6 +148,77 @@ export class WalletService {
     } finally {
       client.release();
     }
+  }
+
+  async findLedger(
+    walletId: string,
+    options: { cursor?: string; limit?: string },
+  ) {
+    const wallet = await this.pool.query(
+      "SELECT id FROM wallets WHERE id = $1",
+      [walletId],
+    );
+
+    if (wallet.rowCount === 0) {
+      throw new NotFoundException("Carteira não encontrada");
+    }
+
+    const rawLimit = options.limit ?? "50";
+    if (!/^\d+$/.test(rawLimit)) {
+      throw new BadRequestException("Parâmetro limit inválido");
+    }
+
+    const limit = Number(rawLimit);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new BadRequestException("limit deve estar entre 1 e 100");
+    }
+
+    let afterSeq = "0";
+    if (options.cursor !== undefined) {
+      try {
+        const decoded = Buffer.from(options.cursor, "base64url").toString("utf8");
+        if (!/^\d+$/.test(decoded) || decoded.length > 19) {
+          throw new Error("Cursor inválido");
+        }
+        afterSeq = BigInt(decoded).toString();
+        if (BigInt(afterSeq) < 0n) throw new Error("Cursor inválido");
+      } catch {
+        throw new BadRequestException("Cursor inválido");
+      }
+    }
+
+    const result = await this.pool.query(
+      `SELECT seq, id, wallet_id, transaction_id, direction, amount,
+              currency, balance_before, balance_after, created_at
+       FROM wallet_ledger_entries
+       WHERE wallet_id = $1 AND seq > $2::bigint
+       ORDER BY seq ASC
+       LIMIT $3`,
+      [walletId, afterSeq, limit + 1],
+    );
+
+    const hasMore = result.rows.length > limit;
+    const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+    const lastSeq = rows.length ? String(rows[rows.length - 1].seq) : null;
+
+    return {
+      walletId,
+      entries: rows.map((row) => ({
+        id: row.id,
+        transactionId: row.transaction_id,
+        direction: row.direction,
+        amount: {
+          amount: String(row.amount),
+          currency: row.currency,
+        },
+        balanceBefore: String(row.balance_before),
+        balanceAfter: String(row.balance_after),
+        createdAt: row.created_at,
+      })),
+      nextCursor: hasMore && lastSeq !== null
+        ? Buffer.from(lastSeq, "utf8").toString("base64url")
+        : null,
+    };
   }
 
   async findById(walletId: string) {
