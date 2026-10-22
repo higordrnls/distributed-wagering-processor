@@ -144,13 +144,10 @@ que eu adotaria: um IdP externo (Keycloak ou Zitadel) emitindo JWT, validado por
 global no Nest, com os endpoints de health abertos e a fila tratada como canal interno confiável.
 
 ## 8. Limitações e pendências conhecidas
-- Desvio de ORM descrito em 2.4.
-- O envelope `IntegrationEvent` (classe abstrata com subclasses, seção 11 do enunciado) ainda não
-  existe: o outbox grava só o `data` e o publisher monta o envelope ao publicar.
-- Ainda não há métrica de conflitos de lock, nem métrica da DLQ real (só candidatas à DLQ).
-- Os logs são do `Logger` do Nest (texto), sem JSON estruturado nem `correlationId`.
-- O `AuthGuard` no-op (ponto de extensão explícito) ainda não foi adicionado ao código.
-- Falhas transitórias de banco não têm mapeamento explícito para 503 na API.
-- Wallet inexistente numa submissão: tratamento a confirmar e testar.
-- Testes automatizados de ≥3 instâncias, wallets distintas em paralelo, reinício, DLQ e do
-  worker de `PENDING_REFERENCE` ainda não existem.
+
+- **ORM:** MikroORM é utilizado nas migrations e no preparo dos testes. O caminho transacional de negócio utiliza SQL explícito com `pg`, conforme o desvio documentado na seção 2.4.
+- **Observabilidade:** há propagação de `correlationId` pelo fluxo HTTP, processamento, persistência, outbox e SQS. Isso não equivale à implementação completa de logs JSON estruturados.
+- **Métricas:** ainda não há métricas específicas de conflitos de lock nem contagem direta de mensagens presentes na DLQ.
+- **Autenticação:** não há autenticação implementada; permanece fora do escopo funcional adotado, conforme a seção 7.
+- **Tratamento de erros:** o mapeamento explícito de todas as falhas transitórias de banco para HTTP 503 e o comportamento de submissões com wallet inexistente ainda precisam de verificação específica.
+- **Testes:** a suíte possui 124 testes aprovados, incluindo concorrência multiprocesso, recuperação e concorrência do outbox, redelivery e DLQ do SQS, crash de processo e reconciliação de referências pendentes. Isso não substitui testes de carga ou validação em produção.
