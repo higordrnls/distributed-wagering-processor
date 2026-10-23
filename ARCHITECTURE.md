@@ -24,7 +24,7 @@ referência já carregadas. Quem carrega, trava e persiste é o use case.
 `Money` guarda **centavos em `bigint`**. É exato, não usa `number` nem biblioteca extra, e a escala
 fixa de 2 casas do enunciado torna isso suficiente. Entrada aceita `"25"`, `"25.5"` e `"25.00"`
 (normaliza para 2 casas), rejeita 3+ casas, negativos, notação científica e vazio, com no máximo
-15 dígitos inteiros. No banco: `numeric(18,2)`. Na reidratação:
+15 dígitos inteiros. No banco: `numeric(18,2)`. Operações aritméticas também verificam o intervalo representável por `numeric(18,2)` e rejeitam overflow antes da persistência. Na reidratação:
 `Money.from({ amount: String(row.amount), currency })`. Trade-off: não serve para moedas com outra
 escala (ex.: 3 casas), o que está fora do escopo.
 
@@ -140,7 +140,7 @@ Os eventos são gravados na **mesma transação** do saldo, do ledger e da inbox
 `FOR UPDATE SKIP LOCKED`, reserva o lote incrementando `attempts` e empurrando `next_attempt_at`
 30 s à frente (se o processo morrer, outra instância reassume após a reserva expirar), publica e marca
 `published_at`. Em falha, backoff `min(300, 2^tentativas)` s. A entrega é **at-least-once**, então o
-consumidor dos eventos deve deduplicar por `eventId`.
+consumidor dos eventos deve deduplicar por `eventId`. Um teste de integração mata o processo publisher com `SIGKILL` após a publicação no SQS e antes da confirmação no PostgreSQL, verificando a recuperação por outro publisher.
 
 ## 5. Worker de `PENDING_REFERENCE`
 Roda a cada `REFERENCE_POLL_INTERVAL_MS` (padrão 5 s) com `FOR UPDATE SKIP LOCKED`. Limite de
