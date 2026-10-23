@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SQS="docker compose exec -T ministack awslocal sqs"
+# Prefer Docker Desktop's Windows CLI when running inside WSL2.
+if grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null && command -v docker.exe >/dev/null 2>&1; then
+  DOCKER="docker.exe"
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  DOCKER="docker"
+elif command -v docker.exe >/dev/null 2>&1; then
+  DOCKER="docker.exe"
+else
+  echo "Docker CLI não disponível." >&2
+  exit 1
+fi
+
+SQS="$DOCKER compose exec -T ministack awslocal sqs"
 
 echo "Criando DLQ..."
 $SQS create-queue \

@@ -10,6 +10,10 @@ Stack: Bun, TypeScript (strict), NestJS, PostgreSQL 16, SQS (MiniStack), Docker 
 ## Pré-requisitos
 Bun 1.4.x, Docker com Docker Compose, Git.
 
+**Ubuntu no WSL2 com Docker Desktop:** se `docker` não estiver disponível
+dentro do Ubuntu, utilize `docker.exe compose` nos comandos abaixo.
+O script `scripts/setup-sqs.sh` detecta automaticamente essa situação.
+
 ## Como executar
 ```bash
 git clone https://github.com/higordrnls/distributed-wagering-processor.git

@@ -12,6 +12,21 @@ import {
 const operations = Math.max(1, Number(process.env.LOAD_OPERATIONS ?? 30));
 const concurrency = Math.max(1, Number(process.env.LOAD_CONCURRENCY ?? 10));
 const amount = process.env.LOAD_AMOUNT ?? "1.00";
+
+function toCents(value: string): bigint {
+  if (!/^(0|[1-9]\d*)\.\d{2}$/.test(value)) {
+    throw new Error(`Valor monetário inválido: ${value}`);
+  }
+  return BigInt(value.replace(".", ""));
+}
+
+function fromCents(cents: bigint): string {
+  const negative = cents < 0n;
+  const absolute = negative ? -cents : cents;
+  return `${negative ? "-" : ""}${absolute / 100n}.${(absolute % 100n).toString().padStart(2, "0")}`;
+}
+
+const amountCents = toCents(amount);
 const providerId = `load-test-${randomUUID()}`;
 
 const pool = new Pool({
@@ -169,22 +184,22 @@ async function assertWallet(walletId: string, initialBalance: string, expectedBa
     );
   }
 
-  let reconstructed = Math.round(Number(initialBalance) * 100);
+  let reconstructed = toCents(initialBalance);
 
   for (const entry of ledger.rows) {
-    if (reconstructed !== Math.round(Number(entry.balance_before) * 100)) {
+    if (reconstructed !== toCents(String(entry.balance_before))) {
       throw new Error(`Saldo anterior inconsistente no ledger da carteira ${walletId}`);
     }
 
-    const value = Math.round(Number(entry.amount) * 100);
+    const value = toCents(String(entry.amount));
     reconstructed += entry.direction === "CREDIT" ? value : -value;
 
-    if (reconstructed !== Math.round(Number(entry.balance_after) * 100)) {
+    if (reconstructed !== toCents(String(entry.balance_after))) {
       throw new Error(`Saldo posterior inconsistente no ledger da carteira ${walletId}`);
     }
   }
 
-  if (reconstructed !== Math.round(Number(expectedBalance) * 100)) {
+  if (reconstructed !== toCents(expectedBalance)) {
     throw new Error(`Saldo reconstruído diverge na carteira ${walletId}`);
   }
 }
@@ -205,7 +220,7 @@ async function main() {
 
   // Cenário 1: todas as operações disputam a mesma carteira.
   const hot = await createWallet(
-    (Number(amount) * operations).toFixed(2),
+    fromCents(amountCents * BigInt(operations)),
   );
 
   const hotReport = await runScenario(
@@ -239,14 +254,14 @@ async function main() {
 
   await assertWallet(
     hot.walletId,
-    (Number(amount) * operations).toFixed(2),
+    fromCents(amountCents * BigInt(operations)),
     "0.00",
   );
 
   // Cenário 2: cada operação utiliza uma carteira independente.
   const independent = await Promise.all(
     Array.from({ length: operations }, () =>
-      createWallet((Number(amount) * 2).toFixed(2)),
+      createWallet(fromCents(amountCents * 2n)),
     ),
   );
 
@@ -283,8 +298,8 @@ async function main() {
 
     await assertWallet(
       wallet.walletId,
-      (Number(amount) * 2).toFixed(2),
-      Number(amount).toFixed(2),
+      fromCents(amountCents * 2n),
+      fromCents(amountCents),
     );
   }
 
@@ -323,7 +338,7 @@ async function main() {
   await assertWallet(
     replayWallet.walletId,
     "1000.00",
-    (1000 - Number(amount)).toFixed(2),
+    fromCents(100000n - amountCents),
   );
 
   console.log("Validação financeira concluída.");

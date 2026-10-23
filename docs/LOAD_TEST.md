@@ -75,3 +75,34 @@ LOAD_OPERATIONS=1000 LOAD_CONCURRENCY=25 bun run test:load
 ```
 
 Execute com os serviços de banco configurados e as migrations aplicadas.
+
+## Revalidação após correção da precisão monetária
+
+Após substituir os cálculos monetários com ponto flutuante por operações
+exatas com `bigint` no script de carga, foram executados novamente o
+typecheck e os benchmarks de 10 e 1.000 operações por cenário.
+
+Ambiente da revalidação: Bun 1.4.3, Linux, 12 CPUs lógicas reportadas,
+3,71 GiB de memória reportada, PostgreSQL (`wager_test`).
+
+### Resultados — 1.000 operações, concorrência 25
+
+| Cenário | Vazão (op/s) | p50 (ms) | p95 (ms) | p99 (ms) | Erros | Replays |
+|---|---:|---:|---:|---:|---:|---:|
+| Hot wallet | 227,99 | 81,02 | 207,32 | 727,32 | 0 | 0 |
+| Carteiras independentes | 1.493,12 | 16,30 | 22,88 | 26,16 | 0 | 0 |
+| Replays idempotentes | 315,48 | 76,36 | 91,10 | 94,95 | 0 | 999 |
+
+Foram realizadas 3.000 chamadas ao processador financeiro: 1.000 apostas
+na mesma carteira, 1.000 apostas em carteiras independentes e 1.000
+chamadas da mesma aposta no cenário de replay.
+
+Todos os cenários terminaram com zero erros técnicos, zero conflitos e
+zero resultados inesperados. A validação de saldos, lançamentos e
+contagens foi concluída com a mensagem `Validação financeira concluída.`
+
+O typecheck também passou sem erros em 91 arquivos.
+
+Os resultados são observações locais de uma única execução e não
+representam capacidade de produção. O benchmark continua limitado ao
+processador financeiro com PostgreSQL; não mede HTTP nem SQS de ponta a ponta.
