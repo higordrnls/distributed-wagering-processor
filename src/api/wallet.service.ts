@@ -223,7 +223,7 @@ export class WalletService {
     const storedBalance = String(row.stored_balance);
     const calculatedBalance = String(row.calculated_balance);
     const difference = String(row.difference);
-    const consistent = Number(difference) === 0;
+    const consistent = /^-?0(?:\.0+)?$/.test(difference);
 
     if (!consistent) {
       this.metrics?.reconciliationMismatches.inc();
