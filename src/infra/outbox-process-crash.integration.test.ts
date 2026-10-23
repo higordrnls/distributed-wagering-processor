@@ -9,7 +9,7 @@ import {
   SQSClient,
 } from "@aws-sdk/client-sqs";
 
-const CRASH_TEST_DB = "wager_outbox_crash_test";
+const CRASH_TEST_DB = `wager_outbox_crash_${randomUUID().replaceAll("-", "")}`;
 import { OutboxPublisher } from "./outbox-publisher";
 
 let pool: Pool;

@@ -142,7 +142,13 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
             [message.id],
           );
 
-          this.logger.log(`Evento ${message.id} publicado no SQS`);
+          this.logger.log({
+            event: "outbox_message_published",
+            eventId: message.id,
+            eventType: message.event_type,
+            correlationId: message.correlation_id,
+            attempts: message.attempts,
+          });
         } catch (error) {
           const attempts = message.attempts + 1;
           const delaySeconds = Math.min(300, 2 ** Math.min(attempts, 8));
@@ -155,18 +161,33 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
               [message.id, delaySeconds],
             );
           } catch (databaseError) {
-            this.logger.error(
-              `Falha ao reagendar evento ${message.id}: ${String(databaseError)}`,
-            );
+            this.logger.error({
+              event: "outbox_reschedule_failed",
+              eventId: message.id,
+              eventType: message.event_type,
+              correlationId: message.correlation_id,
+              errorName: databaseError instanceof Error
+                ? databaseError.name
+                : "UnknownError",
+            });
           }
 
-          this.logger.error(
-            `Falha ao publicar evento ${message.id}: ${String(error)}`,
-          );
+          this.logger.error({
+            event: "outbox_publish_failed",
+            eventId: message.id,
+            eventType: message.event_type,
+            correlationId: message.correlation_id,
+            attempts: message.attempts,
+            backoffSeconds: delaySeconds,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          });
         }
       }
     } catch (error) {
-      this.logger.error(`Falha no ciclo da outbox: ${String(error)}`);
+      this.logger.error({
+        event: "outbox_cycle_failed",
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
     } finally {
       this.running = false;
       await this.updateOutboxLag();
@@ -214,9 +235,10 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
 
       this.metrics?.outboxLag.set(Number(result.rows[0]?.lag_seconds ?? 0));
     } catch (error) {
-      this.logger.error(
-        `Falha ao atualizar outbox lag: ${String(error)}`,
-      );
+      this.logger.error({
+        event: "outbox_lag_update_failed",
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
     }
   }
 }
