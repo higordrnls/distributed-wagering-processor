@@ -27,6 +27,40 @@ describe("Money.from", () => {
   });
 });
 
+describe("Money limites de persistência", () => {
+  test("aceita o maior valor representável em numeric(18,2)", () => {
+    expect(brl("999999999999999.99").toString()).toBe("999999999999999.99");
+  });
+
+  test("permite soma dentro da capacidade de numeric(18,2)", () => {
+    expect(brl("999999999999999.99").add(brl("0.01")).toString())
+      .toBe("1000000000000000.00");
+  });
+
+});
+
+describe("Money limites aritméticos", () => {
+  test("rejeita resultado acima da capacidade do PostgreSQL", () => {
+    const base = brl("999999999999999.99");
+    const max = base.add(base).add(base).add(base)
+      .add(base).add(base).add(base).add(base)
+      .add(base).add(base);
+
+    expect(max.toString()).toBe("9999999999999999.90");
+    expect(() => max.add(brl("0.10"))).toThrow(InvalidMoneyError);
+  });
+
+  test("rejeita resultado negativo fora do intervalo", () => {
+    const base = brl("999999999999999.99");
+    const max = base.add(base).add(base).add(base)
+      .add(base).add(base).add(base).add(base)
+      .add(base).add(base);
+
+    expect(() => max.negate().subtract(brl("0.10")))
+      .toThrow(InvalidMoneyError);
+  });
+});
+
 describe("Money operações", () => {
   test("não sofre erro de ponto flutuante (0.10 + 0.20)", () => {
     expect(brl("0.10").add(brl("0.20")).toString()).toBe("0.30");

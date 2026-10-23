@@ -13,7 +13,12 @@ export class Money {
   private constructor(
     private readonly cents: bigint,
     public readonly currency: string,
-  ) {}
+  ) {
+    const maxCents = 999999999999999999n;
+    if (cents > maxCents || cents < -maxCents) {
+      throw new InvalidMoneyError("Valor monetário excede numeric(18,2)");
+    }
+  }
 
   /** Entrada externa: só aceita valores não negativos, com até 2 casas decimais. */
   static from(props: MoneyProps): Money {
