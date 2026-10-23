@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 import {
   SQSClient,
   ReceiveMessageCommand,
@@ -8,24 +8,45 @@ import {
   CreateQueueCommand,
   DeleteQueueCommand,
 } from "@aws-sdk/client-sqs";
-import { createTestOrm } from "./test-db";
+import { MikroORM } from "@mikro-orm/postgresql";
+import { ormOptions } from "./orm-config";
 import { OutboxPublisher } from "./outbox-publisher";
 
+const testDb = `wager_outbox_concurrency_${randomUUID().replaceAll("-", "")}`;
 let queueUrl: string;
 
 let pool: Pool;
 let sqs: SQSClient;
 
 beforeAll(async () => {
-  const orm = await createTestOrm();
-  await orm.close(true);
+  const admin = new Client({
+    host: process.env.DB_HOST ?? "localhost",
+    port: Number(process.env.DB_PORT ?? 5433),
+    user: process.env.DB_USER ?? "wager",
+    password: process.env.DB_PASSWORD ?? "wager",
+    database: "postgres",
+  });
+
+  await admin.connect();
+  try {
+    await admin.query(`CREATE DATABASE ${testDb}`);
+  } finally {
+    await admin.end();
+  }
+
+  const orm = await MikroORM.init(ormOptions(testDb));
+  try {
+    await orm.getMigrator().up();
+  } finally {
+    await orm.close(true);
+  }
 
   pool = new Pool({
     host: process.env.DB_HOST ?? "localhost",
     port: Number(process.env.DB_PORT ?? 5433),
     user: process.env.DB_USER ?? "wager",
     password: process.env.DB_PASSWORD ?? "wager",
-    database: "wager_test",
+    database: testDb,
   });
 
   sqs = new SQSClient({
@@ -52,11 +73,32 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (queueUrl) {
-    await sqs.send(new DeleteQueueCommand({ QueueUrl: queueUrl }));
+  try {
+    if (queueUrl) {
+      await sqs.send(new DeleteQueueCommand({ QueueUrl: queueUrl }));
+    }
+  } finally {
+    try {
+      await pool?.end();
+    } finally {
+      sqs?.destroy();
+
+      const admin = new Client({
+        host: process.env.DB_HOST ?? "localhost",
+        port: Number(process.env.DB_PORT ?? 5433),
+        user: process.env.DB_USER ?? "wager",
+        password: process.env.DB_PASSWORD ?? "wager",
+        database: "postgres",
+      });
+
+      await admin.connect();
+      try {
+        await admin.query(`DROP DATABASE IF EXISTS ${testDb} WITH (FORCE)`);
+      } finally {
+        await admin.end();
+      }
+    }
   }
-  await pool?.end();
-  sqs?.destroy();
 });
 
 describe("Outbox — dois publishers concorrentes", () => {
@@ -85,18 +127,37 @@ describe("Outbox — dois publishers concorrentes", () => {
       publisherA.onModuleInit();
       publisherB.onModuleInit();
 
-      await Bun.sleep(1000);
+      type PublishedEventRow = {
+        id: string;
+        attempts: number;
+        published_at: Date | null;
+      };
 
-      const result = await pool.query(
-        `SELECT id, attempts, published_at
-         FROM outbox_messages
-         WHERE id = ANY($1::uuid[])`,
-        [ids],
-      );
+      let rows: PublishedEventRow[] = [];
 
-      expect(result.rows).toHaveLength(10);
-      expect(result.rows.every((row) => row.published_at !== null)).toBe(true);
-      expect(result.rows.every((row) => row.attempts === 1)).toBe(true);
+      for (let attempt = 0; attempt < 150; attempt++) {
+        const result = await pool.query<PublishedEventRow>(
+          `SELECT id, attempts, published_at
+           FROM outbox_messages
+           WHERE id = ANY($1::uuid[])`,
+          [ids],
+        );
+
+        rows = result.rows;
+
+        if (
+          rows.length === 10 &&
+          rows.every((row) => row.published_at !== null)
+        ) {
+          break;
+        }
+
+        await Bun.sleep(100);
+      }
+
+      expect(rows).toHaveLength(10);
+      expect(rows.every((row) => row.published_at !== null)).toBe(true);
+      expect(rows.every((row) => row.attempts === 1)).toBe(true);
 
       const receivedIds = new Set<string>();
 

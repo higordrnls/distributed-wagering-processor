@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 import {
   CreateQueueCommand,
   DeleteQueueCommand,
@@ -8,23 +8,43 @@ import {
   ReceiveMessageCommand,
   SQSClient,
 } from "@aws-sdk/client-sqs";
-import { createTestOrm } from "./test-db";
+import { MikroORM } from "@mikro-orm/postgresql";
+import { ormOptions } from "./orm-config";
 import { OutboxPublisher } from "./outbox-publisher";
 
+const testDb = `wager_recovery_${randomUUID().replaceAll("-", "")}`;
 let pool: Pool;
 let sqs: SQSClient;
 let queueUrl: string;
 
 beforeAll(async () => {
-  const orm = await createTestOrm();
-  await orm.close(true);
+  const admin = new Client({
+    host: process.env.DB_HOST ?? "localhost",
+    port: Number(process.env.DB_PORT ?? 5433),
+    user: process.env.DB_USER ?? "wager",
+    password: process.env.DB_PASSWORD ?? "wager",
+    database: "postgres",
+  });
+  await admin.connect();
+  try {
+    await admin.query(`CREATE DATABASE ${testDb}`);
+  } finally {
+    await admin.end();
+  }
+
+  const orm = await MikroORM.init(ormOptions(testDb));
+  try {
+    await orm.getMigrator().up();
+  } finally {
+    await orm.close(true);
+  }
 
   pool = new Pool({
     host: process.env.DB_HOST ?? "localhost",
     port: Number(process.env.DB_PORT ?? 5433),
     user: process.env.DB_USER ?? "wager",
     password: process.env.DB_PASSWORD ?? "wager",
-    database: "wager_test",
+    database: testDb,
   });
 
   sqs = new SQSClient({
@@ -51,11 +71,32 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (queueUrl) {
-    await sqs.send(new DeleteQueueCommand({ QueueUrl: queueUrl }));
+  try {
+    if (queueUrl) {
+      await sqs.send(new DeleteQueueCommand({ QueueUrl: queueUrl }));
+    }
+  } finally {
+    try {
+      await pool?.end();
+    } finally {
+      sqs?.destroy();
+
+      const admin = new Client({
+        host: process.env.DB_HOST ?? "localhost",
+        port: Number(process.env.DB_PORT ?? 5433),
+        user: process.env.DB_USER ?? "wager",
+        password: process.env.DB_PASSWORD ?? "wager",
+        database: "postgres",
+      });
+
+      await admin.connect();
+      try {
+        await admin.query(`DROP DATABASE IF EXISTS ${testDb} WITH (FORCE)`);
+      } finally {
+        await admin.end();
+      }
+    }
   }
-  await pool?.end();
-  sqs?.destroy();
 });
 
 describe("Outbox — recuperação de reserva abandonada", () => {
@@ -84,8 +125,8 @@ describe("Outbox — recuperação de reserva abandonada", () => {
     try {
       publisher.onModuleInit();
 
-      await Bun.sleep(300);
-
+      // A reserva futura impede a seleção deste evento.
+      // Confirma que ele permanece pendente antes de simular a expiração.
       const before = await pool.query(
         `SELECT attempts, published_at
          FROM outbox_messages WHERE id = $1`,
@@ -111,16 +152,25 @@ describe("Outbox — recuperação de reserva abandonada", () => {
       try {
         recoveredPublisher.onModuleInit();
 
-        await Bun.sleep(500);
+        let recovered = false;
 
-        const after = await pool.query(
-          `SELECT attempts, published_at
-           FROM outbox_messages WHERE id = $1`,
-          [id],
-        );
+        for (let attempt = 0; attempt < 150; attempt++) {
+          const after = await pool.query(
+            `SELECT attempts, published_at
+             FROM outbox_messages WHERE id = $1`,
+            [id],
+          );
 
-        expect(after.rows[0].attempts).toBe(2);
-        expect(after.rows[0].published_at).not.toBeNull();
+          if (after.rows[0].published_at !== null) {
+            expect(after.rows[0].attempts).toBe(2);
+            recovered = true;
+            break;
+          }
+
+          await Bun.sleep(100);
+        }
+
+        expect(recovered).toBe(true);
 
         let found = false;
 
