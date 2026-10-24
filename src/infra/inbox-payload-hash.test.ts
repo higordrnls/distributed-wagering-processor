@@ -1,12 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
-import { canonicalJson } from "../domain/payload-hash";
-
-function inboxHash(data: Record<string, unknown>): string {
-  return createHash("sha256")
-    .update(canonicalJson(data))
-    .digest("hex");
-}
+import { computeInboxPayloadHash as inboxHash } from "./inbox-payload-hash";
 
 describe("deduplicação da inbox", () => {
   const data = {
@@ -41,6 +34,15 @@ describe("deduplicação da inbox", () => {
     };
 
     expect(inboxHash(data)).not.toBe(inboxHash(changed));
+  });
+
+  test("25 e 25.00 representam o mesmo valor monetário", () => {
+    const equivalent = {
+      ...data,
+      money: { amount: "25", currency: "BRL" },
+    };
+
+    expect(inboxHash(data)).toBe(inboxHash(equivalent));
   });
 
   test("ordem das propriedades não altera o hash", () => {

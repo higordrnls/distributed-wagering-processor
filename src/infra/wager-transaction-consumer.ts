@@ -5,7 +5,6 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
-import { createHash } from "node:crypto";
 import {
   ChangeMessageVisibilityCommand,
   DeleteMessageCommand,
@@ -14,7 +13,7 @@ import {
   type Message,
 } from "@aws-sdk/client-sqs";
 import { WagerTransactionService } from "../api/wager-transaction.service";
-import { canonicalJson } from "../domain/payload-hash";
+import { computeInboxPayloadHash } from "./inbox-payload-hash";
 import { classifySqsError } from "./sqs-error-classifier";
 import { MetricsService } from "../api/metrics.service";
 import { Optional } from "@nestjs/common";
@@ -164,9 +163,7 @@ export class WagerTransactionConsumer
 
       // Deduplicação da inbox considera os dados da operação,
       // não metadados de transporte do envelope SQS.
-      const payloadHash = createHash("sha256")
-        .update(canonicalJson(envelope.data))
-        .digest("hex");
+      const payloadHash = computeInboxPayloadHash(envelope.data);
 
       const result = await this.service.submit(
         envelope.data,
