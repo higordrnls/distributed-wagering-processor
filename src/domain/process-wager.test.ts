@@ -70,6 +70,25 @@ describe("BET / WIN / LOSS", () => {
     expect(wallet.balance.toString()).toBe("115.00");
   });
 
+  test("WIN que excederia numeric(18,2) é rejeitada sem alterar carteira ou ledger", () => {
+    const { wallet, entries, run } = setup("999999999999999.90");
+    for (let i = 0; i < 9; i++) {
+      run(mk({ kind: K.Win, money: brl("999999999999999.99") }));
+    }
+    const win = mk({ kind: K.Win, money: brl("0.20") });
+    const beforeEntries = entries.length;
+    const beforeVersion = wallet.version;
+
+    const result = run(win);
+
+    expect(win.status).toBe(S.Rejected);
+    expect(win.failureCode).toBe(FailureCode.BalanceLimitExceeded);
+    expect(result.entry).toBeUndefined();
+    expect(wallet.balance.toString()).toBe("9999999999999999.81");
+    expect(wallet.version).toBe(beforeVersion);
+    expect(entries).toHaveLength(beforeEntries);
+  });
+
   test("WIN com referência ausente fica PENDING_REFERENCE", () => {
     const { run } = setup();
     const win = mk({ kind: K.Win, referenceExternalTransactionId: "nao-chegou" });

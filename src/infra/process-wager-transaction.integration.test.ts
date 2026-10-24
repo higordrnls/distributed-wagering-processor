@@ -89,6 +89,70 @@ describe("ProcessWagerTransaction — PostgreSQL", () => {
     expect(String(ledger.rows[0].amount)).toBe("10.00");
   });
 
+  test("overflow de crédito persiste REJECTED sem alterar saldo ou ledger", async () => {
+    const { id: walletId, playerId } = await createWallet("999999999999999.90");
+
+    const makeWin = (amount: string, externalId: string) => {
+      const money = Money.from({ amount, currency: "BRL" });
+      const fields = {
+        providerId: "integration-test",
+        externalTransactionId: externalId,
+        playerId,
+        walletId,
+        roundId: "round-test",
+        gameId: "game-test",
+        kind: K.Win,
+        money,
+        referenceExternalTransactionId: undefined,
+      };
+
+      return WagerTransaction.create({
+        id: randomUUID(),
+        ...fields,
+        idempotencyKey: externalId,
+        payloadHash: computePayloadHash(fields),
+        createdAt: new Date(),
+      });
+    };
+
+    for (let i = 0; i < 9; i++) {
+      const result = await service.execute(
+        makeWin("999999999999999.99", randomUUID()),
+      );
+      expect(result.status).toBe("PROCESSED");
+    }
+
+    const externalId = randomUUID();
+    const transaction = makeWin("0.20", externalId);
+    const result = await service.execute(transaction);
+    const replay = await service.execute(makeWin("0.20", externalId));
+
+    expect(result.status).toBe("REJECTED");
+    expect(result.failureCode).toBe("BALANCE_LIMIT_EXCEEDED");
+    expect(replay.idempotentReplay).toBe(true);
+    expect(replay.status).toBe("REJECTED");
+    expect(replay.failureCode).toBe("BALANCE_LIMIT_EXCEEDED");
+
+    const wallet = await pool.query(
+      "SELECT balance, version FROM wallets WHERE id = $1",
+      [walletId],
+    );
+    const ledger = await pool.query(
+      "SELECT id FROM wallet_ledger_entries WHERE wallet_id = $1",
+      [walletId],
+    );
+    const persisted = await pool.query(
+      "SELECT status, failure_code FROM wager_transactions WHERE id = $1",
+      [result.transactionId],
+    );
+
+    expect(String(wallet.rows[0].balance)).toBe("9999999999999999.81");
+    expect(Number(wallet.rows[0].version)).toBe(10);
+    expect(ledger.rows).toHaveLength(9);
+    expect(persisted.rows[0].status).toBe("REJECTED");
+    expect(persisted.rows[0].failure_code).toBe("BALANCE_LIMIT_EXCEEDED");
+  });
+
   test("duas apostas concorrentes de 80: apenas uma é processada", async () => {
     const { id: walletId, playerId } = await createWallet("100.00");
 

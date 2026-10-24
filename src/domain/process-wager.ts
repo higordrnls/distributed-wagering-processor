@@ -1,4 +1,4 @@
-import { InsufficientFundsError } from "./errors";
+import { InsufficientFundsError, InvalidMoneyError } from "./errors";
 import { FailureCode } from "./failure-code";
 import { LedgerDirection, WalletLedgerEntry } from "./ledger-entry";
 import { WagerTransaction, WagerTransactionKind, WagerTransactionStatus } from "./wager-transaction";
@@ -89,6 +89,13 @@ export function processWager(input: ProcessWagerInput): ProcessWagerResult {
       return reject(
         tx.kind === WagerTransactionKind.Bet ? FailureCode.InsufficientFunds : FailureCode.ReversalInsufficientFunds,
       );
+    }
+    if (
+      e instanceof InvalidMoneyError &&
+      e.message === "Valor monetário excede numeric(18,2)" &&
+      direction === LedgerDirection.Credit
+    ) {
+      return reject(FailureCode.BalanceLimitExceeded);
     }
     throw e;
   }

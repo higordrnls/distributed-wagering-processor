@@ -5,7 +5,7 @@ export interface MoneyProps {
   currency: string; // ISO-4217, ex.: "BRL"
 }
 
-const AMOUNT_RE = /^\d{1,15}(\.\d{1,2})?$/;
+const AMOUNT_RE = /^\d{1,16}(\.\d{1,2})?$/;
 const CURRENCY_RE = /^[A-Z]{3}$/;
 
 /** Valor monetário imutável. Internamente guarda centavos como bigint (exato, sem float). */

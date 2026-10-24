@@ -5,6 +5,8 @@
 export enum FailureCode {
   /** BET sem saldo. Desistir desta aposta (ou reenviar com nova transação após depósito). */
   InsufficientFunds = "INSUFFICIENT_FUNDS",
+  /** Crédito excederia o limite monetário da carteira. Desistir da operação. */
+  BalanceLimitExceeded = "BALANCE_LIMIT_EXCEEDED",
   /** Reversão deixaria o saldo negativo. Situação operacional: exige tratamento manual. */
   ReversalInsufficientFunds = "REVERSAL_INSUFFICIENT_FUNDS",
   /** Referência nunca chegou (tentativas esgotadas). Verificar se a original foi enviada. */

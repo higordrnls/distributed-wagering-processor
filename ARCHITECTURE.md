@@ -174,6 +174,8 @@ Para produção, a implementação seria substituída por uma integração com u
 
 ## 8. Limitações e pendências conhecidas
 
+- **Estado FAILED:** modelado no domínio e protegido como estado terminal no schema, mas nenhum fluxo de processamento o produz atualmente. Falhas de mensageria seguem as políticas de retry e DLQ.
+
 - **Observabilidade:** `StructuredLogger` emite logs JSON para stderr e
   está configurado como logger da aplicação NestJS. A cobertura dos campos
   de contexto varia conforme o evento.
