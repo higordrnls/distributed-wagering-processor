@@ -32,6 +32,7 @@ O domínio concentra as regras financeiras; a camada de aplicação coordena a t
 
 Projeto originalmente desenvolvido como exercício de avaliação técnica e posteriormente trabalhado como portfólio de backend. **Não é um serviço pronto para produção.** Autenticação não foi implementada; os endpoints de negócio estão públicos no ambiente de demonstração. Os benchmarks são medições locais do processador financeiro, não do fluxo HTTP/SQS de ponta a ponta.
 
+- [Estudo de caso para portfólio](docs/PORTFOLIO_CASE_STUDY.md)
 - [Decisões arquiteturais, trade-offs e limitações](ARCHITECTURE.md)
 - [Metodologia e resultados dos testes de carga](docs/LOAD_TEST.md)
 
