@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#180b2b" />
+  <meta name="color-scheme" content="dark" />
   <meta name="description" content="Tigrinho de Mentirinha: um caça-níquel fictício com moedas virtuais." />
   <title>Tigrinho de Mentirinha 🐯</title>
   <link rel="stylesheet" href="./styles.css" />
@@ -28,7 +29,7 @@
           <div class="reel" id="reel-0">🍊</div><div class="reel" id="reel-1">⭐</div><div class="reel" id="reel-2">🍀</div>
         </div>
       </div>
-      <div class="result" id="result" role="status" aria-live="polite">Escolha sua aposta e toque em GIRAR!</div>
+      <div class="result" id="result" role="status" aria-live="polite" aria-atomic="true">Escolha sua aposta e toque em GIRAR!</div>
       <div class="bet-section">
         <div class="bet-title"><span>APOSTA</span><span>Moedas virtuais ✨</span></div>
         <div class="bets" role="group" aria-label="Escolher valor da aposta">
@@ -46,6 +47,7 @@
       <div><span>VITÓRIAS</span><strong id="wins">0</strong></div>
       <div><span>MAIOR PRÊMIO</span><strong id="best">0</strong></div>
     </section>
+    <section class="history" aria-label="Últimas rodadas"><div class="history-heading"><h2>Últimas rodadas</h2><span>Somente neste aparelho</span></div><ol id="history-list" class="history-list"><li class="history-empty">Suas rodadas aparecerão aqui ✨</li></ol></section>
     <details class="rules"><summary>Como funciona? <span aria-hidden="true">⌄</span></summary>
       <p>Combine três símbolos iguais para ganhar moedas. Três 🐯 pagam 10× a aposta; três ⭐ pagam 6×; três 🍀 pagam 4×; outros trios pagam 3×. Dois 🐯 pagam 2×. Os resultados são aleatórios e não representam probabilidades de jogos reais.</p>
     </details>
