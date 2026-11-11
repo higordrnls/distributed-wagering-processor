@@ -6,6 +6,10 @@ Projeto em **Bun, TypeScript (strict), NestJS, PostgreSQL e SQS (MiniStack)**, d
 
 O serviço processa operações **BET, WIN, LOSS, REFUND e ROLLBACK** e busca preservar a integridade das carteiras diante de requisições duplicadas, concorrência entre instâncias, mensagens fora de ordem e falhas de infraestrutura.
 
+## Jogo demonstrativo (mobile-first)
+
+O repositório também contém o **[Tigrinho de Mentirinha](frontend/)**, um caça-níquel fictício para celular com moedas virtuais, animações e progresso salvo no navegador. **Nesta primeira versão o frontend é independente e ainda não utiliza a API financeira.** Veja [instruções de publicação na Cloudflare Pages](frontend/README.md).
+
 ## Destaques técnicos
 
 - **Precisão monetária:** centavos representados com `bigint`, sem aritmética de ponto flutuante.
