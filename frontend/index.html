@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#180b2b" />
+  <meta name="description" content="Tigrinho de Mentirinha: um caça-níquel fictício com moedas virtuais." />
+  <title>Tigrinho de Mentirinha 🐯</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon" aria-hidden="true">🐯</span><div><span class="eyebrow">SÓ DE BRINCADEIRA</span><strong>Tigrinho de Mentirinha</strong></div></div>
+      <button id="sound-toggle" class="icon-button" type="button" aria-label="Ativar som" aria-pressed="false">🔇</button>
+    </header>
+    <section class="wallet" aria-label="Sua carteira virtual">
+      <div><span class="eyebrow">SUAS MOEDAS</span><div class="balance"><span aria-hidden="true">🪙</span> <output id="balance">1.000</output></div></div>
+      <button id="reset-button" class="reset-button" type="button">↻ Recomeçar</button>
+    </section>
+    <section class="machine" aria-label="Caça-níquel fictício">
+      <div class="machine-top"><span class="star">✦</span><div class="mascot" aria-hidden="true">🐯</div><span class="star">✦</span></div>
+      <h1>TIGRINHO <span>DE MENTIRINHA</span></h1>
+      <p class="machine-subtitle">Gire, combine e divirta-se!</p>
+      <div class="reels-frame">
+        <div class="reels" id="reels" aria-label="Símbolos do jogo">
+          <div class="reel" id="reel-0">🍊</div><div class="reel" id="reel-1">⭐</div><div class="reel" id="reel-2">🍀</div>
+        </div>
+      </div>
+      <div class="result" id="result" role="status" aria-live="polite">Escolha sua aposta e toque em GIRAR!</div>
+      <div class="bet-section">
+        <div class="bet-title"><span>APOSTA</span><span>Moedas virtuais ✨</span></div>
+        <div class="bets" role="group" aria-label="Escolher valor da aposta">
+          <button class="bet active" type="button" data-bet="10" aria-pressed="true">10</button>
+          <button class="bet" type="button" data-bet="25" aria-pressed="false">25</button>
+          <button class="bet" type="button" data-bet="50" aria-pressed="false">50</button>
+          <button class="bet" type="button" data-bet="100" aria-pressed="false">100</button>
+        </div>
+      </div>
+      <button id="spin-button" class="spin-button" type="button"><span aria-hidden="true">▶</span> GIRAR</button>
+      <p class="help" id="spin-hint">Cada giro custa o valor da aposta selecionada.</p>
+    </section>
+    <section class="stats" aria-label="Estatísticas da sessão">
+      <div><span>GIROS</span><strong id="spins">0</strong></div>
+      <div><span>VITÓRIAS</span><strong id="wins">0</strong></div>
+      <div><span>MAIOR PRÊMIO</span><strong id="best">0</strong></div>
+    </section>
+    <details class="rules"><summary>Como funciona? <span aria-hidden="true">⌄</span></summary>
+      <p>Combine três símbolos iguais para ganhar moedas. Três 🐯 pagam 10× a aposta; três ⭐ pagam 6×; três 🍀 pagam 4×; outros trios pagam 3×. Dois 🐯 pagam 2×. Os resultados são aleatórios e não representam probabilidades de jogos reais.</p>
+    </details>
+    <footer>🎮 Demonstração fictícia · Sem dinheiro real, depósitos ou saques.<br /><a href="https://github.com/higordrnls/distributed-wagering-processor" target="_blank" rel="noopener noreferrer">Projeto no GitHub ↗</a></footer>
+  </main>
+  <dialog id="reset-dialog"><form method="dialog"><h2>Começar de novo?</h2><p>Seu saldo e suas estatísticas locais serão reiniciados.</p><div class="dialog-actions"><button value="cancel" type="submit">Cancelar</button><button id="confirm-reset" value="confirm" type="submit">Recomeçar</button></div></form></dialog>
+</body>
+</html>
