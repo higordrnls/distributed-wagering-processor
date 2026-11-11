@@ -6,7 +6,9 @@ Caça-níquel **fictício**, com moedas virtuais, desenvolvido como interface l�
 
 - Layout responsivo, priorizando telas de celular.
 - Três rolos animados, apostas de 10/25/50/100 moedas, prêmios e estatísticas.
-- Saldo e estatísticas persistidos em `localStorage` no mesmo navegador.
+- Saldo, estatísticas e histórico das últimas cinco rodadas persistidos em `localStorage` no mesmo navegador.
+- Rodadas registradas somente após a animação, evitando debitar uma aposta incompleta se a página for atualizada durante o giro.
+- Respeita a preferência de movimento reduzido do dispositivo.
 - Botão de reinício e opção de áudio.
 - Sem login, pagamentos, depósitos, saques ou dinheiro real.
 
