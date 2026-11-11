@@ -1,11 +1,41 @@
 # Distributed Wagering Processor
 
-Serviço financeiro distribuído que processa transações de apostas (BET, WIN, LOSS, REFUND, ROLLBACK)
-com idempotência persistente, ledger imutável, inbox/outbox e consumo SQS.
-Stack: Bun, TypeScript (strict), NestJS, PostgreSQL 16, SQS (MiniStack), Docker Compose.
+**Backend distribuído para processamento de transações financeiras com consistência, idempotência e tolerância a falhas.**
 
-- Enunciado original: [docs/CHALLENGE.md](docs/CHALLENGE.md)
-- Decisões técnicas, trade-offs e limitações: [ARCHITECTURE.md](ARCHITECTURE.md)
+Projeto em **Bun, TypeScript (strict), NestJS, PostgreSQL e SQS (MiniStack)**, desenvolvido para estudar e demonstrar desafios reais de engenharia backend em sistemas financeiros distribuídos.
+
+O serviço processa operações **BET, WIN, LOSS, REFUND e ROLLBACK** e busca preservar a integridade das carteiras diante de requisições duplicadas, concorrência entre instâncias, mensagens fora de ordem e falhas de infraestrutura.
+
+## Destaques técnicos
+
+- **Precisão monetária:** centavos representados com `bigint`, sem aritmética de ponto flutuante.
+- **Idempotência persistente:** chaves, hashes de payload e constraints no PostgreSQL evitam processamento financeiro duplicado.
+- **Concorrência:** lock pessimista por carteira para evitar *lost updates* sem bloquear todas as carteiras.
+- **Rastreabilidade:** ledger imutável e reconciliação de saldo.
+- **Mensageria:** consumo SQS FIFO, retries, DLQ e recuperação de mensagens.
+- **Consistência de eventos:** padrão *Transactional Outbox* com entrega *at-least-once*.
+- **Testes:** cenários documentados de integração, concorrência, idempotência e recuperação após falhas.
+
+## Arquitetura em resumo
+
+```text
+HTTP API ───────┐
+                ├──> Caso de uso transacional ──> PostgreSQL
+SQS Consumer ───┘      wallet · transações · ledger · inbox · outbox
+                                               │
+                                       Outbox Publisher ──> SQS Events
+```
+
+O domínio concentra as regras financeiras; a camada de aplicação coordena a transação; a infraestrutura implementa persistência e mensageria. O PostgreSQL é a fonte de verdade para saldo, idempotência e unicidade.
+
+## Escopo e transparência
+
+Projeto originalmente desenvolvido como exercício de avaliação técnica e posteriormente trabalhado como portfólio de backend. **Não é um serviço pronto para produção.** Autenticação não foi implementada; os endpoints de negócio estão públicos no ambiente de demonstração. Os benchmarks são medições locais do processador financeiro, não do fluxo HTTP/SQS de ponta a ponta.
+
+- [Decisões arquiteturais, trade-offs e limitações](ARCHITECTURE.md)
+- [Metodologia e resultados dos testes de carga](docs/LOAD_TEST.md)
+
+---
 
 ## Pré-requisitos
 Bun 1.4.x, Docker com Docker Compose, Git.
