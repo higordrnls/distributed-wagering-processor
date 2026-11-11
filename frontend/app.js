@@ -8,6 +8,7 @@ const SYMBOLS = ["🐯", "⭐", "🍀", "🍊", "🍒", "💎"];
 const MULTIPLIERS = { "🐯": 10, "⭐": 6, "🍀": 4, "🍊": 3, "🍒": 3, "💎": 3 };
 const $ = (id) => document.getElementById(id);
 const reels = [0, 1, 2].map((i) => $("reel-" + i));
+const reelSymbols = reels.map((el) => el.querySelector(".reel-symbol"));
 const betButtons = [...document.querySelectorAll("[data-bet]")];
 const number = (n) => n.toLocaleString("pt-BR");
 
@@ -104,25 +105,58 @@ function tone(freq, duration = .08) {
   } catch { /* Som é opcional. */ }
 }
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function celebrate() {
+  const layer = $("celebration");
+  layer.replaceChildren();
+  const shapes = ["✨", "⭐", "🟡", "🎊"];
+  for (let i = 0; i < 18; i++) {
+    const item = document.createElement("span");
+    item.className = "confetti";
+    item.textContent = shapes[randomIndex(shapes.length)];
+    item.style.setProperty("--x", (randomIndex(95) + 2) + "%");
+    item.style.setProperty("--delay", (randomIndex(450) / 1000) + "s");
+    item.style.setProperty("--size", (14 + randomIndex(15)) + "px");
+    layer.append(item);
+  }
+  $("machine").classList.remove("big-win");
+  void $("machine").offsetWidth;
+  $("machine").classList.add("big-win");
+  setTimeout(() => { layer.replaceChildren(); $("machine").classList.remove("big-win"); }, 2300);
+}
+
 async function spin() {
   if (spinning || state.balance < state.bet) return;
   spinning = true;
   const bet = state.bet;
   // A rodada é registrada somente após a animação: atualizar a página
   // durante o giro não deve cobrar uma aposta sem concluir o resultado.
-  reels.forEach((el) => { el.classList.remove("winning"); el.classList.add("spinning"); });
+  reels.forEach((el) => { el.classList.remove("winning", "stopping"); el.classList.add("spinning"); });
+  $("celebration").replaceChildren();
   $("result").classList.remove("win");
   $("result").textContent = "Boa sorte! ✨";
   render();
   const symbols = Array.from({ length: 3 }, () => SYMBOLS[randomIndex(SYMBOLS.length)]);
-  // Animação visual: os resultados são definidos uma vez por giro.
+  // Resultados fixados antes da animação; cada rolo para em um instante diferente.
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  for (let frame = 0; frame < (reducedMotion ? 1 : 12); frame++) {
-    reels.forEach((el, i) => { el.textContent = SYMBOLS[randomIndex(SYMBOLS.length)]; });
-    tone(250 + frame * 24, .035);
-    if (!reducedMotion) await delay(65 + frame * 9);
+  if (!reducedMotion) {
+    for (let frame = 0; frame < 20; frame++) {
+      for (let i = 0; i < 3; i++) {
+        if (frame < 8 + i * 6) reelSymbols[i].textContent = SYMBOLS[randomIndex(SYMBOLS.length)];
+      }
+      if (frame === 8 || frame === 14 || frame === 19) {
+        const index = frame === 8 ? 0 : frame === 14 ? 1 : 2;
+        reelSymbols[index].textContent = symbols[index];
+        reels[index].classList.remove("spinning");
+        reels[index].classList.add("stopping");
+        tone(440 + index * 130, .12);
+      }
+      await delay(75);
+    }
   }
-  reels.forEach((el, i) => { el.textContent = symbols[i]; el.classList.remove("spinning"); });
+  reels.forEach((el, i) => {
+    reelSymbols[i].textContent = symbols[i];
+    el.classList.remove("spinning", "stopping");
+  });
   const prize = resultFor(symbols, bet);
   state.balance = state.balance - bet + prize;
   state.spins += 1;
@@ -134,6 +168,7 @@ async function spin() {
     $("result").classList.add("win");
     reels.forEach((el) => el.classList.add("winning"));
     tone(660, .16);
+    celebrate();
   } else {
     $("result").textContent = "Não foi dessa vez! Tente outro giro 🍀";
   }
@@ -158,7 +193,9 @@ $("reset-button").addEventListener("click", () => $("reset-dialog").showModal())
 $("reset-dialog").addEventListener("close", () => {
   if ($("reset-dialog").returnValue !== "confirm") return;
   state = { ...INITIAL, history: [] };
-  reels.forEach((el, i) => { el.classList.remove("winning", "spinning"); el.textContent = ["🍊", "⭐", "🍀"][i]; });
+  reels.forEach((el, i) => { el.classList.remove("winning", "spinning", "stopping"); reelSymbols[i].textContent = ["🍊", "⭐", "🍀"][i]; });
+  $("celebration").replaceChildren();
+  $("machine").classList.remove("big-win");
   $("result").textContent = "Escolha sua aposta e toque em GIRAR!";
   $("result").classList.remove("win");
   persist(); render();
