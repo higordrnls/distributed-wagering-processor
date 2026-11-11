@@ -20,13 +20,13 @@
       <div><span class="eyebrow">SUAS MOEDAS</span><div class="balance"><span aria-hidden="true">🪙</span> <output id="balance">1.000</output></div></div>
       <button id="reset-button" class="reset-button" type="button">↻ Recomeçar</button>
     </section>
-    <section class="machine" aria-label="Caça-níquel fictício">
+    <section class="machine" id="machine" aria-label="Caça-níquel fictício">
       <div class="machine-top"><span class="star">✦</span><div class="mascot" aria-hidden="true">🐯</div><span class="star">✦</span></div>
       <h1>TIGRINHO <span>DE MENTIRINHA</span></h1>
       <p class="machine-subtitle">Gire, combine e divirta-se!</p>
-      <div class="reels-frame">
+      <div class="reels-frame" id="reels-frame"><div id="celebration" class="celebration" aria-hidden="true"></div>
         <div class="reels" id="reels" aria-label="Símbolos do jogo">
-          <div class="reel" id="reel-0">🍊</div><div class="reel" id="reel-1">⭐</div><div class="reel" id="reel-2">🍀</div>
+          <div class="reel" id="reel-0"><span class="reel-symbol">🍊</span></div><div class="reel" id="reel-1"><span class="reel-symbol">⭐</span></div><div class="reel" id="reel-2"><span class="reel-symbol">🍀</span></div>
         </div>
       </div>
       <div class="result" id="result" role="status" aria-live="polite" aria-atomic="true">Escolha sua aposta e toque em GIRAR!</div>
