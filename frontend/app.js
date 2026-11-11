@@ -3,7 +3,7 @@
 "use strict";
 
 const STORAGE_KEY = "tigrinho-de-mentirinha-v1";
-const INITIAL = Object.freeze({ balance: 1000, spins: 0, wins: 0, best: 0, bet: 10 });
+const INITIAL = Object.freeze({ balance: 1000, spins: 0, wins: 0, best: 0, bet: 10, history: [] });
 const SYMBOLS = ["🐯", "⭐", "🍀", "🍊", "🍒", "💎"];
 const MULTIPLIERS = { "🐯": 10, "⭐": 6, "🍀": 4, "🍊": 3, "🍒": 3, "💎": 3 };
 const $ = (id) => document.getElementById(id);
@@ -21,6 +21,7 @@ function load() {
       clean[key] = parsed[key];
     }
     clean.bet = [10, 25, 50, 100].includes(parsed.bet) ? parsed.bet : 10;
+    clean.history = Array.isArray(parsed.history) ? parsed.history.filter((item) => item && Array.isArray(item.symbols) && item.symbols.length === 3 && item.symbols.every((s) => SYMBOLS.includes(s)) && Number.isSafeInteger(item.bet) && item.bet > 0 && Number.isSafeInteger(item.prize) && item.prize >= 0).slice(0, 5) : [];
     return clean;
   } catch { return { ...INITIAL }; }
 }
@@ -32,6 +33,28 @@ let soundEnabled = false;
 function persist() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch { /* Navegador com armazenamento bloqueado: a sessão ainda funciona. */ }
+}
+function renderHistory() {
+  const list = $("history-list");
+  list.replaceChildren();
+  if (!state.history.length) {
+    const empty = document.createElement("li");
+    empty.className = "history-empty";
+    empty.textContent = "Suas rodadas aparecerão aqui ✨";
+    list.append(empty);
+    return;
+  }
+  for (const item of state.history) {
+    const row = document.createElement("li");
+    const symbols = document.createElement("span");
+    symbols.className = "history-symbols";
+    symbols.textContent = item.symbols.join(" ");
+    const amount = document.createElement("span");
+    amount.className = item.prize ? "history-prize" : "history-loss";
+    amount.textContent = item.prize ? "+" + number(item.prize) + " moedas" : "−" + number(item.bet) + " moedas";
+    row.append(symbols, amount);
+    list.append(row);
+  }
 }
 function render() {
   $("balance").textContent = number(state.balance);
@@ -49,6 +72,7 @@ function render() {
     button.disabled = spinning;
   }
   $("reset-button").disabled = spinning;
+  renderHistory();
 }
 function randomIndex(max) {
   if (globalThis.crypto?.getRandomValues) {
@@ -84,24 +108,26 @@ async function spin() {
   if (spinning || state.balance < state.bet) return;
   spinning = true;
   const bet = state.bet;
-  state.balance -= bet;
-  state.spins += 1;
-  persist();
+  // A rodada é registrada somente após a animação: atualizar a página
+  // durante o giro não deve cobrar uma aposta sem concluir o resultado.
   reels.forEach((el) => { el.classList.remove("winning"); el.classList.add("spinning"); });
   $("result").classList.remove("win");
   $("result").textContent = "Boa sorte! ✨";
   render();
   const symbols = Array.from({ length: 3 }, () => SYMBOLS[randomIndex(SYMBOLS.length)]);
   // Animação visual: os resultados são definidos uma vez por giro.
-  for (let frame = 0; frame < 12; frame++) {
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  for (let frame = 0; frame < (reducedMotion ? 1 : 12); frame++) {
     reels.forEach((el, i) => { el.textContent = SYMBOLS[randomIndex(SYMBOLS.length)]; });
     tone(250 + frame * 24, .035);
-    await delay(65 + frame * 9);
+    if (!reducedMotion) await delay(65 + frame * 9);
   }
   reels.forEach((el, i) => { el.textContent = symbols[i]; el.classList.remove("spinning"); });
   const prize = resultFor(symbols, bet);
+  state.balance = state.balance - bet + prize;
+  state.spins += 1;
+  state.history = [{ symbols, bet, prize }, ...state.history].slice(0, 5);
   if (prize > 0) {
-    state.balance += prize;
     state.wins += 1;
     state.best = Math.max(state.best, prize);
     $("result").textContent = "🎉 Você ganhou " + number(prize) + " moedas!";
@@ -131,7 +157,7 @@ $("sound-toggle").addEventListener("click", () => {
 $("reset-button").addEventListener("click", () => $("reset-dialog").showModal());
 $("reset-dialog").addEventListener("close", () => {
   if ($("reset-dialog").returnValue !== "confirm") return;
-  state = { ...INITIAL };
+  state = { ...INITIAL, history: [] };
   reels.forEach((el, i) => { el.classList.remove("winning", "spinning"); el.textContent = ["🍊", "⭐", "🍀"][i]; });
   $("result").textContent = "Escolha sua aposta e toque em GIRAR!";
   $("result").classList.remove("win");
