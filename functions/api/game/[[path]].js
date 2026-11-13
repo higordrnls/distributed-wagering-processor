@@ -30,7 +30,7 @@ function normalize(row) {
 }
 export async function onRequest({ request, env }) {
   const path = new URL(request.url).pathname;
-  if (!["/api/game/session", "/api/game/spin"].includes(path)) return json({ message: "Rota inexistente" }, 404);
+  if (!["/api/game/session", "/api/game/spin", "/api/game/reset"].includes(path)) return json({ message: "Rota inexistente" }, 404);
   if (!env.DATABASE_URL) return json({ message: "Jogo online ainda não configurado" }, 503);
   try {
     if (path === "/api/game/session" && request.method === "GET") {
@@ -44,6 +44,21 @@ export async function onRequest({ request, env }) {
       const rows = await query(env.DATABASE_URL,
         "INSERT INTO game_players(id,token_hash) VALUES($1,$2) RETURNING balance,spins,wins,best",
         [id, await hash(newToken)]);
+      return json(normalize(rows[0]), 200, { "Set-Cookie": makeCookie(newToken) });
+    }
+    if (path === "/api/game/reset" && request.method === "POST") {
+      const origin = request.headers.get("Origin");
+      if (origin && origin !== new URL(request.url).origin) return json({ message: "Origem não autorizada" }, 403);
+      const token = getCookie(request);
+      if (!validToken(token)) return json({ message: "Sessão expirada. Atualize a página." }, 401);
+      const previous = await query(env.DATABASE_URL, "SELECT id FROM game_players WHERE token_hash=$1", [await hash(token)]);
+      if (!previous.length) return json({ message: "Sessão não encontrada" }, 401);
+      // Uma nova carteira preserva o histórico antigo no banco para auditoria.
+      // O token anterior deixa de ser usado pelo navegador.
+      const newToken = hex(crypto.getRandomValues(new Uint8Array(32)));
+      const rows = await query(env.DATABASE_URL,
+        "INSERT INTO game_players(id,token_hash) VALUES($1,$2) RETURNING balance,spins,wins,best",
+        [crypto.randomUUID(), await hash(newToken)]);
       return json(normalize(rows[0]), 200, { "Set-Cookie": makeCookie(newToken) });
     }
     if (path === "/api/game/spin" && request.method === "POST") {
