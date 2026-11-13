@@ -27,11 +27,15 @@ function load() {
   } catch { return { ...INITIAL }; }
 }
 let state = load();
+let online = false;
+let onlineError = false;
+let pendingRequestId = null;
 let spinning = false;
 let audioContext;
 let soundEnabled = false;
 
 function persist() {
+  if (online) return;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch { /* Navegador com armazenamento bloqueado: a sessão ainda funciona. */ }
 }
@@ -72,7 +76,7 @@ function render() {
     button.setAttribute("aria-pressed", String(active));
     button.disabled = spinning;
   }
-  $("reset-button").disabled = spinning;
+  $("reset-button").disabled = spinning || online;
   renderHistory();
 }
 function randomIndex(max) {
@@ -135,7 +139,18 @@ async function spin() {
   $("result").classList.remove("win");
   $("result").textContent = "Boa sorte! ✨";
   render();
-  const symbols = Array.from({ length: 3 }, () => SYMBOLS[randomIndex(SYMBOLS.length)]);
+  let serverRound = null;
+  if (online) {
+    pendingRequestId ||= crypto.randomUUID();
+    try {
+      serverRound = await TigrinhoAPI.spin(bet, pendingRequestId);
+    } catch (error) {
+      $("result").textContent = error.message || "Falha na conexão. Tente novamente.";
+      reels.forEach(el => el.classList.remove("spinning"));
+      spinning = false; render(); return;
+    }
+  }
+  const symbols = serverRound ? serverRound.symbols : Array.from({ length: 3 }, () => SYMBOLS[randomIndex(SYMBOLS.length)]);
   // Resultados fixados antes da animação; cada rolo para em um instante diferente.
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   if (!reducedMotion) {
@@ -157,13 +172,20 @@ async function spin() {
     reelSymbols[i].textContent = symbols[i];
     el.classList.remove("spinning", "stopping");
   });
-  const prize = resultFor(symbols, bet);
-  state.balance = state.balance - bet + prize;
-  state.spins += 1;
+  const prize = serverRound ? Number(serverRound.prize) : resultFor(symbols, bet);
+  if (serverRound) {
+    state.balance = Number(serverRound.balance);
+    state.spins = Number(serverRound.spins);
+    state.wins = Number(serverRound.wins);
+    state.best = Number(serverRound.best);
+    pendingRequestId = null;
+  } else {
+    state.balance = state.balance - bet + prize;
+    state.spins += 1;
+  }
   state.history = [{ symbols, bet, prize }, ...state.history].slice(0, 5);
   if (prize > 0) {
-    state.wins += 1;
-    state.best = Math.max(state.best, prize);
+    if (!serverRound) { state.wins += 1; state.best = Math.max(state.best, prize); }
     $("result").textContent = "🎉 Você ganhou " + number(prize) + " moedas!";
     $("result").classList.add("win");
     reels.forEach((el) => el.classList.add("winning"));
@@ -201,3 +223,20 @@ $("reset-dialog").addEventListener("close", () => {
   persist(); render();
 });
 render();
+
+async function connectGame() {
+  try {
+    const session = await TigrinhoAPI.session();
+    online = true;
+    state = { ...INITIAL, ...session, history: [] };
+    $("reset-button").hidden = true;
+    $("result").textContent = "Conectado! Suas moedas agora são salvas no servidor. 🟢";
+    render();
+  } catch (error) {
+    // Modo local só é usado antes de habilitar o backend no ambiente.
+    // Não migrar saldo local automaticamente para o banco.
+    $("result").textContent = "Modo demonstração local · " + (error.message || "Servidor indisponível");
+    render();
+  }
+}
+connectGame();
