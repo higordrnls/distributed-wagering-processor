@@ -16,6 +16,7 @@ globalThis.TigrinhoAPI = (() => {
   }
   return {
     session: () => request("/session"),
+    reset: () => request("/reset", { method: "POST" }),
     spin: (bet, requestId) => request("/spin", { method: "POST", body: JSON.stringify({ bet, requestId }) }),
   };
 })();
