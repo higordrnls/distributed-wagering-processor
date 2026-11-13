@@ -1,32 +1,35 @@
-# Integração do jogo com o backend financeiro
+# Integração Cloudflare Pages + Neon PostgreSQL (jogo fictício)
 
-## Estado atual
+## Implementação preparada
 
-O frontend está publicado na Cloudflare Pages e usa moedas virtuais em `localStorage`. Foi adicionado um cliente HTTP para `/api/game/session` e `/api/game/spin`, além de uma Pages Function que **retorna 503 enquanto o gateway não estiver configurado**. Isso é intencional: a API NestJS não possui autenticação para exposição pública.
+- Cloudflare Pages Function em `functions/api/game/[[path]].js`: sessão anônima com cookie HttpOnly/Secure e token aleatório cujo hash é armazenado no PostgreSQL.
+- `GET /api/game/session`: cria ou consulta carteira fictícia de 1.000 moedas.
+- `POST /api/game/spin`: valida aposta e UUID de idempotência; chama `game_spin` no Neon.
+- `docs/neon-game-schema.sql`: tabelas `game_players` e `game_rounds` e função PostgreSQL transacional com lock por jogador, sorteio no servidor e replay idempotente.
+- Frontend: usa API quando a sessão online responde; enquanto não estiver configurada, sinaliza **modo demonstração local**.
 
-**O jogo continua funcionando no modo local. Não há integração financeira ativa em produção.**
+**Atenção: esta é uma implementação nova de backend serverless para o jogo, NÃO uma conexão com o NestJS original.** O processador distribuído do desafio permanece separado. Não afirmar que SQS/outbox/ledger original processam giros do jogo.
 
-## Contrato proposto
+## Ativação (sem instalar nada)
 
-### GET /api/game/session
+1. No Neon recém-criado, abrir **SQL Editor** e executar integralmente [neon-game-schema.sql](neon-game-schema.sql) na branch/database correta.
+2. Na Cloudflare Pages, abrir o projeto → **Settings → Variables and Secrets** (ou **Environment variables**).
+3. Criar variável secreta **`DATABASE_URL`** com a connection string copiada de **Connect** no Neon. Usar tipo **Secret / Encrypt**; nunca publicar a URL no GitHub, capturas de tela ou conversa.
+4. Salvar para **Production** e executar novo deployment da branch `main` (mudanças de variáveis exigem novo deploy).
+5. Abrir o jogo em janela anônima. Deve aparecer **“Conectado! Suas moedas agora são salvas no servidor.”**
+6. Girar, recarregar e verificar saldo; consultar `SELECT * FROM game_rounds ORDER BY created_at DESC LIMIT 5;` no Neon SQL Editor.
+7. Confirmar funcionamento em celular e após várias rodadas, além de falhas de rede e giros duplicados.
 
-Resposta de sucesso: `{ "balance": 1000, "spins": 0, "wins": 0, "best": 0 }`.
+## Limitações e pendências
 
-### POST /api/game/spin
+- Ainda **não validado em produção**. Não marcar como integrado até executar SQL, configurar secret e realizar teste real.
+- Sessão anônima por cookie: sem conta/senha nem sincronização entre dispositivos; perda do cookie perde o acesso ao saldo anterior.
+- O frontend mantém histórico das cinco rodadas apenas no navegador; as rodadas completas ficam no PostgreSQL.
+- Sem controle de taxa avançado; antes de divulgação ampla, configurar rate limiting no Cloudflare WAF e limites de recursos.
+- A API de sessão cria carteira automaticamente: isso precisa de proteção contra criação excessiva de sessões.
+- Sem dinheiro real, pagamentos, depósitos ou saques.
+- Os ganhos são definidos pelo PostgreSQL; este jogo é apenas demonstrativo e não deve ser usado como sistema de apostas reais.
 
-Corpo: `{ "bet": 10, "requestId": "uuid" }`.
+## Publicação honesta
 
-Resposta de sucesso: `{ "symbols": ["🍊","⭐","🍀"], "prize": 0, "balance": 990, "spins": 1, "wins": 0, "best": 0 }`.
-
-A camada de jogo deve validar o valor da aposta, autenticar a sessão, aplicar rate limiting, definir o resultado no servidor, processar BET e WIN/LOSS com IDs idempotentes e retornar o saldo confirmado. Um mesmo `requestId` precisa retornar o mesmo resultado sem novo débito.
-
-## Requisitos antes de ativar
-
-1. Hospedar NestJS, PostgreSQL e infraestrutura de mensageria compatível, com segredos privados.
-2. Implementar gateway seguro de jogo, com cookies de sessão HttpOnly/Secure/SameSite e proteção contra abuso.
-3. Nunca expor `POST /wallets` ou a API financeira diretamente a usuários anônimos.
-4. Tratar rodada como unidade de negócio: evitar debitar BET sem concluir o resultado e oferecer recuperação de rodadas interrompidas.
-5. Integrar o frontend ao contrato acima, com indicador de indisponibilidade e sem trocar silenciosamente para saldo local.
-6. Executar testes end-to-end, concorrência, idempotência, refresh e falhas de rede antes do deploy.
-
-Os créditos são fictícios: sem dinheiro real, depósitos ou saques.
+Depois de confirmar o teste real, é correto dizer **“frontend Cloudflare integrado a backend serverless com persistência no Neon PostgreSQL”**. Ainda não é correto dizer **“frontend integrado ao backend NestJS/SQS do desafio”**.
