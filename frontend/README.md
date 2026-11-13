@@ -30,3 +30,5 @@ Para pré-visualização local, basta servir a pasta `frontend` com um servidor 
 2. Hospedar API, PostgreSQL e mensageria em serviços compatíveis.
 3. Adicionar identidade de jogador e salvamento de progresso entre dispositivos.
 4. Definir limites de uso e proteção dos endpoints públicos.
+
+<!-- Cloudflare Pages: deployment refresh after production DATABASE_URL secret configuration, 2026-11-13. -->
