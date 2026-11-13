@@ -19,3 +19,43 @@ html{scroll-behavior:smooth}body{overscroll-behavior-y:contain}button{touch-acti
 .confetti{position:absolute;top:-20px;left:var(--x);font-size:var(--size);animation:confetti-fall 1.7s ease-in forwards;animation-delay:var(--delay)}
 @keyframes confetti-fall{0%{transform:translateY(-10px) rotate(0);opacity:1}100%{transform:translateY(350px) rotate(560deg);opacity:0}}
 @media(prefers-reduced-motion:reduce){.reel.spinning .reel-symbol,.reel.stopping .reel-symbol,.machine.big-win,.confetti{animation:none!important}}
+
+/* Cenário decorativo desktop: palco luminoso sem interferir no jogo. */
+body{position:relative;isolation:isolate}
+.app{position:relative;z-index:1}
+@media(min-width:800px){
+  body{
+    background:
+      radial-gradient(ellipse 35% 48% at 50% 40%,#8c28543d 0%,transparent 100%),
+      radial-gradient(ellipse 33% 55% at 5% 20%,#7b266a66 0%,transparent 100%),
+      radial-gradient(ellipse 33% 55% at 95% 20%,#7b266a66 0%,transparent 100%),
+      radial-gradient(ellipse 48% 36% at 50% 105%,#8b3d314a 0%,transparent 100%),
+      linear-gradient(130deg,#16091f 0%,#280e38 42%,#1a0927 100%);
+    background-attachment:fixed;
+  }
+  body:before,body:after{
+    content:"✦   ✧     ✦";
+    position:fixed;
+    top:0;
+    bottom:0;
+    width:max(0px,calc((100vw - 580px)/2));
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    pointer-events:none;
+    z-index:0;
+    font-size:clamp(32px,4vw,74px);
+    letter-spacing:clamp(8px,2vw,38px);
+    color:#ffd78844;
+    text-shadow:0 0 28px #ffb44c66,0 0 90px #f45b8860;
+    background:
+      radial-gradient(circle at 50% 38%,#f7a64618 0 2px,transparent 3px),
+      repeating-linear-gradient(145deg,transparent 0 64px,#f4b8640a 65px 66px,transparent 67px 130px);
+    background-size:120px 120px,auto;
+    overflow:hidden;
+  }
+  body:before{left:0}
+  body:after{right:0;transform:scaleX(-1)}
+  .app{padding-top:30px;padding-bottom:48px}
+}
+@media(max-width:799px){body:before,body:after{display:none}}
