@@ -12,7 +12,7 @@ Caça-níquel fictício, mobile-first, com moedas virtuais e sem apostas com din
 - Sessão anônima com cookie HttpOnly/Secure; carteira e rodadas persistidas no Neon PostgreSQL.
 - Resultado e saldo calculados **no servidor**, não pelo navegador, quando o modo online está ativo.
 - Recomeçar cria uma nova carteira com 1.000 moedas virtuais; registros antigos permanecem no banco.
-- Histórico visual das últimas cinco rodadas apenas no aparelho.
+- Histórico das últimas cinco rodadas recuperado do PostgreSQL ao atualizar a página.
 
 ## Arquitetura
 
@@ -41,4 +41,4 @@ No SQL Editor do Neon, executar [neon-game-schema.sql](../docs/neon-game-schema.
 
 ## Limitações
 
-Projeto demonstrativo sem dinheiro real, saques, depósitos ou login entre dispositivos. O acesso à carteira depende do cookie no navegador. Antes de divulgação ampla, é recomendável configurar rate limiting e proteção contra criação excessiva de sessões. Não é uma plataforma de apostas pronta para produção.
+Projeto demonstrativo sem dinheiro real, saques, depósitos ou login entre dispositivos. O acesso à carteira depende do cookie no navegador. Se a API estiver indisponível, o jogo bloqueia novos giros em vez de debitar moedas localmente. Antes de divulgação ampla, é recomendável configurar rate limiting e proteção contra criação excessiva de sessões. Não é uma plataforma de apostas pronta para produção.
