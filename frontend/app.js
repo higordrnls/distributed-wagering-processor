@@ -28,7 +28,7 @@ function load() {
 }
 let state = load();
 let online = false;
-let onlineError = false;
+let resetting = false;
 let pendingRequestId = null;
 let spinning = false;
 let audioContext;
@@ -76,7 +76,7 @@ function render() {
     button.setAttribute("aria-pressed", String(active));
     button.disabled = spinning;
   }
-  $("reset-button").disabled = spinning || online;
+  $("reset-button").disabled = spinning || resetting;
   renderHistory();
 }
 function randomIndex(max) {
@@ -214,14 +214,33 @@ $("sound-toggle").addEventListener("click", () => {
 $("reset-button").addEventListener("click", () => $("reset-dialog").showModal());
 $("reset-dialog").addEventListener("close", () => {
   if ($("reset-dialog").returnValue !== "confirm") return;
-  state = { ...INITIAL, history: [] };
+  restartGame();
+});
+async function restartGame() {
+  if (spinning || resetting) return;
+  resetting = true;
+  render();
+  try {
+    if (online) {
+      const session = await TigrinhoAPI.reset();
+      state = { ...INITIAL, ...session, history: [] };
+      pendingRequestId = null;
+    } else {
+      state = { ...INITIAL, history: [] };
+    }
+  } catch (error) {
+    $("result").textContent = error.message || "Não foi possível recomeçar. Tente novamente.";
+    resetting = false; render(); return;
+  }
   reels.forEach((el, i) => { el.classList.remove("winning", "spinning", "stopping"); reelSymbols[i].textContent = ["🍊", "⭐", "🍀"][i]; });
   $("celebration").replaceChildren();
   $("machine").classList.remove("big-win");
   $("result").textContent = "Escolha sua aposta e toque em GIRAR!";
   $("result").classList.remove("win");
-  persist(); render();
-});
+  persist();
+  resetting = false;
+  render();
+}
 render();
 
 async function connectGame() {
@@ -229,7 +248,6 @@ async function connectGame() {
     const session = await TigrinhoAPI.session();
     online = true;
     state = { ...INITIAL, ...session, history: [] };
-    $("reset-button").hidden = true;
     $("result").textContent = "Conectado! Suas moedas agora são salvas no servidor. 🟢";
     render();
   } catch (error) {
