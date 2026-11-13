@@ -6,9 +6,20 @@ Projeto em **Bun, TypeScript (strict), NestJS, PostgreSQL e SQS (MiniStack)**, d
 
 O serviço processa operações **BET, WIN, LOSS, REFUND e ROLLBACK** e busca preservar a integridade das carteiras diante de requisições duplicadas, concorrência entre instâncias, mensagens fora de ordem e falhas de infraestrutura.
 
-## Jogo demonstrativo (mobile-first)
+## 🎮 Demonstração ao vivo — Tigrinho de Mentirinha
 
-O repositório também contém o **[Tigrinho de Mentirinha](frontend/)**, um caça-níquel fictício para celular com moedas virtuais, animações e progresso salvo no navegador. **Nesta primeira versão o frontend é independente e ainda não utiliza a API financeira.** Veja [instruções de publicação na Cloudflare Pages](frontend/README.md).
+**[▶ Jogar Tigrinho de Mentirinha](https://distributed-wagering-processor.pages.dev/)** · [Código do frontend](frontend/) · [Como funciona a integração](docs/GAME_BACKEND_INTEGRATION.md)
+
+Um jogo fictício, mobile-first, com moedas virtuais (sem dinheiro real), animações e estatísticas. O jogo já está publicado e utiliza **Cloudflare Pages Functions + Neon PostgreSQL**: o servidor decide o resultado de cada rodada, registra as operações e mantém o saldo ao recarregar a página. Há também reinício com nova carteira virtual.
+
+**Arquiteturas distintas:** o jogo usa um **backend serverless próprio**, não os endpoints NestJS/SQS do processador distribuído descrito abaixo. As duas implementações compartilham o repositório e o contexto de estudo, mas **não estão conectadas entre si**.
+
+```text
+Jogo (HTML/CSS/JS) → Cloudflare Pages Functions → Neon PostgreSQL
+                       sessão · rodada · reset      carteira · rodadas
+```
+
+O jogo é uma demonstração educacional, não uma plataforma de apostas nem um sistema pronto para operação financeira real.
 
 ## Destaques técnicos
 
@@ -34,7 +45,7 @@ O domínio concentra as regras financeiras; a camada de aplicação coordena a t
 
 ## Escopo e transparência
 
-Projeto originalmente desenvolvido como exercício de avaliação técnica e posteriormente trabalhado como portfólio de backend. **Não é um serviço pronto para produção.** Autenticação não foi implementada; os endpoints de negócio estão públicos no ambiente de demonstração. Os benchmarks são medições locais do processador financeiro, não do fluxo HTTP/SQS de ponta a ponta.
+Projeto originalmente desenvolvido como exercício de avaliação técnica e posteriormente trabalhado como portfólio de backend. **Não é um serviço pronto para produção.** Autenticação não foi implementada no processador NestJS; seus endpoints de negócio não devem ser expostos publicamente. A demonstração online usa outro backend, com sessões anônimas. Os benchmarks são medições locais do processador financeiro, não do fluxo HTTP/SQS de ponta a ponta.
 
 - [Estudo de caso para portfólio](docs/PORTFOLIO_CASE_STUDY.md)
 - [Decisões arquiteturais, trade-offs e limitações](ARCHITECTURE.md)
