@@ -37,7 +37,12 @@ export async function onRequest({ request, env }) {
       const token = getCookie(request);
       if (validToken(token)) {
         const rows = await query(env.DATABASE_URL, "SELECT balance,spins,wins,best FROM game_players WHERE token_hash=$1", [await hash(token)]);
-        if (rows.length) return json(normalize(rows[0]));
+        if (rows.length) {
+          const history = await query(env.DATABASE_URL,
+            "SELECT symbols,bet,prize FROM game_rounds WHERE player_id=(SELECT id FROM game_players WHERE token_hash=$1) ORDER BY created_at DESC,id DESC LIMIT 5",
+            [await hash(token)]);
+          return json({ ...normalize(rows[0]), history });
+        }
       }
       const newToken = hex(crypto.getRandomValues(new Uint8Array(32)));
       const id = crypto.randomUUID();
