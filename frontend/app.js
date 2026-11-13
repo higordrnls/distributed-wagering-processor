@@ -1,5 +1,4 @@
-/* Frontend standalone demonstrativo: a integração com a API NestJS será feita depois.
-   Não há apostas reais, autenticação, saques ou valores monetários. */
+/* Jogo fictício com API serverless Cloudflare + Neon. Sem dinheiro real. */
 "use strict";
 
 const STORAGE_KEY = "tigrinho-de-mentirinha-v1";
@@ -28,8 +27,11 @@ function load() {
 }
 let state = load();
 let online = false;
+let connecting = true;
+let connectionError = false;
 let resetting = false;
 let pendingRequestId = null;
+let pendingBet = null;
 let spinning = false;
 let audioContext;
 let soundEnabled = false;
@@ -67,16 +69,16 @@ function render() {
   $("wins").textContent = number(state.wins);
   $("best").textContent = number(state.best);
   const canSpin = state.balance >= state.bet;
-  $("spin-button").disabled = spinning || !canSpin;
-  $("spin-button").innerHTML = spinning ? "GIRANDO…" : '<span aria-hidden="true">▶</span> GIRAR';
-  $("spin-hint").textContent = canSpin ? "Cada giro custa " + state.bet + " moedas virtuais." : "Saldo insuficiente. Toque em Recomeçar para jogar novamente.";
+  $("spin-button").disabled = spinning || resetting || connecting || connectionError || !canSpin;
+  $("spin-button").innerHTML = connecting ? "CONECTANDO…" : spinning ? "GIRANDO…" : '<span aria-hidden="true">▶</span> GIRAR';
+  $("spin-hint").textContent = connecting ? "Conectando ao servidor…" : connectionError ? "Servidor indisponível. Atualize a página para tentar novamente." : canSpin ? "Cada giro custa " + state.bet + " moedas virtuais." : "Saldo insuficiente. Toque em Recomeçar para jogar novamente.";
   for (const button of betButtons) {
     const active = Number(button.dataset.bet) === state.bet;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
-    button.disabled = spinning;
+    button.disabled = spinning || resetting || connecting || connectionError || pendingRequestId !== null;
   }
-  $("reset-button").disabled = spinning || resetting;
+  $("reset-button").disabled = spinning || resetting || connecting || connectionError || pendingRequestId !== null;
   renderHistory();
 }
 function randomIndex(max) {
@@ -89,6 +91,17 @@ function randomIndex(max) {
     return value % max;
   }
   return Math.floor(Math.random() * max);
+}
+function winningIndices(symbols) {
+  if (symbols.every((s) => s === symbols[0])) return [0, 1, 2];
+  const tigers = symbols.flatMap((symbol, index) => symbol === "🐯" ? [index] : []);
+  return tigers.length === 2 ? tigers : [];
+}
+function winMessage(symbols, prize, bet) {
+  const multiplier = prize / bet;
+  if (symbols.every((s) => s === symbols[0]))
+    return "🎉 Três " + symbols[0] + "! " + multiplier + "× a aposta: " + number(prize) + " moedas!";
+  return "🐯🐯 Dois tigres! " + multiplier + "× a aposta: " + number(prize) + " moedas!";
 }
 function resultFor(symbols, bet) {
   if (symbols.every((s) => s === symbols[0])) return bet * MULTIPLIERS[symbols[0]];
@@ -129,12 +142,11 @@ function celebrate() {
 }
 
 async function spin() {
-  if (spinning || state.balance < state.bet) return;
+  if (spinning || resetting || connecting || connectionError || state.balance < state.bet) return;
   spinning = true;
   const bet = state.bet;
-  // A rodada é registrada somente após a animação: atualizar a página
-  // durante o giro não deve cobrar uma aposta sem concluir o resultado.
-  reels.forEach((el) => { el.classList.remove("winning", "stopping"); el.classList.add("spinning"); });
+  // O servidor confirma e persiste a rodada antes da animação.
+  reels.forEach((el) => { el.classList.remove("winning", "stopping", "winning-symbol"); el.classList.add("spinning"); });
   $("celebration").replaceChildren();
   $("result").classList.remove("win");
   $("result").textContent = "Boa sorte! ✨";
@@ -142,10 +154,11 @@ async function spin() {
   let serverRound = null;
   if (online) {
     pendingRequestId ||= crypto.randomUUID();
+    pendingBet ??= bet;
     try {
-      serverRound = await TigrinhoAPI.spin(bet, pendingRequestId);
+      serverRound = await TigrinhoAPI.spin(pendingBet, pendingRequestId);
     } catch (error) {
-      $("result").textContent = error.message || "Falha na conexão. Tente novamente.";
+      $("result").textContent = (error.message || "Falha na conexão.") + " Tente GIRAR novamente sem trocar a aposta.";
       reels.forEach(el => el.classList.remove("spinning"));
       spinning = false; render(); return;
     }
@@ -179,6 +192,7 @@ async function spin() {
     state.wins = Number(serverRound.wins);
     state.best = Number(serverRound.best);
     pendingRequestId = null;
+    pendingBet = null;
   } else {
     state.balance = state.balance - bet + prize;
     state.spins += 1;
@@ -186,9 +200,9 @@ async function spin() {
   state.history = [{ symbols, bet, prize }, ...state.history].slice(0, 5);
   if (prize > 0) {
     if (!serverRound) { state.wins += 1; state.best = Math.max(state.best, prize); }
-    $("result").textContent = "🎉 Você ganhou " + number(prize) + " moedas!";
+    $("result").textContent = winMessage(symbols, prize, bet);
     $("result").classList.add("win");
-    reels.forEach((el) => el.classList.add("winning"));
+    winningIndices(symbols).forEach((index) => reels[index].classList.add("winning", "winning-symbol"));
     tone(660, .16);
     celebrate();
   } else {
@@ -199,7 +213,7 @@ async function spin() {
   render();
 }
 betButtons.forEach((button) => button.addEventListener("click", () => {
-  if (spinning) return;
+  if (spinning || resetting || connecting || connectionError || pendingRequestId) return;
   state.bet = Number(button.dataset.bet);
   persist(); render(); tone(440);
 }));
@@ -217,7 +231,7 @@ $("reset-dialog").addEventListener("close", () => {
   restartGame();
 });
 async function restartGame() {
-  if (spinning || resetting) return;
+  if (spinning || resetting || connecting || connectionError || pendingRequestId) return;
   resetting = true;
   render();
   try {
@@ -225,6 +239,7 @@ async function restartGame() {
       const session = await TigrinhoAPI.reset();
       state = { ...INITIAL, ...session, history: [] };
       pendingRequestId = null;
+      pendingBet = null;
     } else {
       state = { ...INITIAL, history: [] };
     }
@@ -232,7 +247,7 @@ async function restartGame() {
     $("result").textContent = error.message || "Não foi possível recomeçar. Tente novamente.";
     resetting = false; render(); return;
   }
-  reels.forEach((el, i) => { el.classList.remove("winning", "spinning", "stopping"); reelSymbols[i].textContent = ["🍊", "⭐", "🍀"][i]; });
+  reels.forEach((el, i) => { el.classList.remove("winning", "winning-symbol", "spinning", "stopping"); reelSymbols[i].textContent = ["🍊", "⭐", "🍀"][i]; });
   $("celebration").replaceChildren();
   $("machine").classList.remove("big-win");
   $("result").textContent = "Escolha sua aposta e toque em GIRAR!";
@@ -247,13 +262,14 @@ async function connectGame() {
   try {
     const session = await TigrinhoAPI.session();
     online = true;
+    connecting = false;
     state = { ...INITIAL, ...session, history: [] };
     $("result").textContent = "Conectado! Suas moedas agora são salvas no servidor. 🟢";
     render();
   } catch (error) {
-    // Modo local só é usado antes de habilitar o backend no ambiente.
-    // Não migrar saldo local automaticamente para o banco.
-    $("result").textContent = "Modo demonstração local · " + (error.message || "Servidor indisponível");
+    connecting = false;
+    connectionError = true;
+    $("result").textContent = "Servidor indisponível · " + (error.message || "Tente atualizar a página.");
     render();
   }
 }
